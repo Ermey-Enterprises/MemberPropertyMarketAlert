@@ -1,0 +1,215 @@
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="row">
+    <div class="col-12">
+        <h1 class="display-4">
+            <i class="fas fa-tachometer-alt me-3"></i>Property Market Alert Dashboard
+        </h1>
+        <p class="lead">Monitor member property listings and manage address data for financial institutions.</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">Total Addresses</h4>
+                        <h2 id="totalAddresses">-</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-map-marker-alt fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">Active Matches</h4>
+                        <h2 id="activeMatches">-</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">Pending Reviews</h4>
+                        <h2 id="pendingReviews">-</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-clock fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">Institutions</h4>
+                        <h2 id="totalInstitutions">-</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-university fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-line me-2"></i>Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="activityChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-bell me-2"></i>Recent Alerts</h5>
+            </div>
+            <div class="card-body">
+                <div id="recentAlerts">
+                    <div class="alert alert-info">
+                        <small class="text-muted">2 hours ago</small><br>
+                        <strong>New Match Found</strong><br>
+                        Property at 123 Main St matched member CU001-M001
+                    </div>
+                    <div class="alert alert-warning">
+                        <small class="text-muted">4 hours ago</small><br>
+                        <strong>High Confidence Match</strong><br>
+                        Property at 456 Oak Ave (95% confidence)
+                    </div>
+                    <div class="alert alert-success">
+                        <small class="text-muted">6 hours ago</small><br>
+                        <strong>Bulk Upload Complete</strong><br>
+                        50 addresses added for Community Bank
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-cogs me-2"></i>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <a href="@Url.Action("AddressManagement")" class="btn btn-primary btn-lg w-100 mb-2">
+                            <i class="fas fa-plus me-2"></i>Add Addresses
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-success btn-lg w-100 mb-2" onclick="runMatching()">
+                            <i class="fas fa-search me-2"></i>Run Matching
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-info btn-lg w-100 mb-2" onclick="exportData()">
+                            <i class="fas fa-download me-2"></i>Export Data
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-warning btn-lg w-100 mb-2" onclick="viewReports()">
+                            <i class="fas fa-chart-bar me-2"></i>View Reports
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Initialize dashboard
+        $(document).ready(function() {
+            loadDashboardData();
+            initializeChart();
+        });
+
+        function loadDashboardData() {
+            // Simulate loading dashboard data
+            $('#totalAddresses').text('1,247');
+            $('#activeMatches').text('23');
+            $('#pendingReviews').text('8');
+            $('#totalInstitutions').text('12');
+        }
+
+        function initializeChart() {
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'New Matches',
+                        data: [12, 19, 8, 15, 22, 13, 18],
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        tension: 0.1
+                    }, {
+                        label: 'New Addresses',
+                        data: [5, 8, 12, 6, 15, 9, 11],
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function runMatching() {
+            alert('Property matching process initiated. This would trigger the Azure Function.');
+        }
+
+        function exportData() {
+            alert('Data export functionality would be implemented here.');
+        }
+
+        function viewReports() {
+            alert('Detailed reports functionality would be implemented here.');
+        }
+    </script>
+}
