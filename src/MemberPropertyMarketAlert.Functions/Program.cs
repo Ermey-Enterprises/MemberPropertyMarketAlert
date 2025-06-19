@@ -30,7 +30,7 @@ var host = new HostBuilder()
         services.AddHttpClient();
 
         // Add application services
-        services.AddSingleton<ICosmosDbService, InMemoryCosmosDbService>();
+        services.AddScoped<ICosmosDbService, CosmosDbService>();
         services.AddScoped<IPropertyMatchingService, PropertyMatchingService>();
 
         // Add Application Insights
