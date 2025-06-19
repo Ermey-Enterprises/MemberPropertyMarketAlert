@@ -1,0 +1,367 @@
+name: Member Property Market Alert - Production Deployment
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'infra/**'
+      - '.github/workflows/member-property-alert-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if no changes detected'
+        required: false
+        default: false
+        type: boolean
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+        - dev
+        - test
+        - prod
+
+env:
+  AZURE_RESOURCE_GROUP: 'MemberPropertyMarketAlert-rg'
+  AZURE_LOCATION: 'East US 2'
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '18.x'
+
+jobs:
+  # Pre-deployment validation
+  validate:
+    name: 🔍 Validate & Security Scan
+    runs-on: ubuntu-latest
+    outputs:
+      should-deploy: ${{ steps.changes.outputs.should-deploy }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Check for relevant changes
+      id: changes
+      run: |
+        if [[ "${{ github.event.inputs.force_deploy }}" == "true" ]]; then
+          echo "should-deploy=true" >> $GITHUB_OUTPUT
+          echo "Force deployment requested"
+          exit 0
+        fi
+        
+        # Check if there are changes in source code or infrastructure
+        if git diff --name-only HEAD~1 HEAD | grep -E '^(src/|infra/|\.github/workflows/)'; then
+          echo "should-deploy=true" >> $GITHUB_OUTPUT
+          echo "Relevant changes detected"
+        else
+          echo "should-deploy=false" >> $GITHUB_OUTPUT
+          echo "No relevant changes detected"
+        fi
+        
+    - name: Setup .NET
+      if: steps.changes.outputs.should-deploy == 'true'
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      if: steps.changes.outputs.should-deploy == 'true'
+      run: dotnet restore
+      
+    - name: Security scan with CodeQL
+      if: steps.changes.outputs.should-deploy == 'true'
+      uses: github/codeql-action/init@v3
+      with:
+        languages: csharp
+        
+    - name: Build for analysis
+      if: steps.changes.outputs.should-deploy == 'true'
+      run: dotnet build --configuration Release --no-restore
+      
+    - name: Perform CodeQL Analysis
+      if: steps.changes.outputs.should-deploy == 'true'
+      uses: github/codeql-action/analyze@v3
+      
+    - name: Run unit tests with coverage
+      if: steps.changes.outputs.should-deploy == 'true'
+      run: |
+        dotnet test --configuration Release --no-build \
+          --collect:"XPlat Code Coverage" \
+          --results-directory ./TestResults \
+          --logger "trx;LogFileName=test-results.trx"
+          
+    - name: Upload test results
+      if: steps.changes.outputs.should-deploy == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: ./TestResults/
+
+  # Build and package applications
+  build:
+    name: 🔨 Build Applications
+    runs-on: ubuntu-latest
+    needs: validate
+    if: needs.validate.outputs.should-deploy == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build Functions App
+      run: |
+        dotnet publish src/MemberPropertyMarketAlert.Functions/MemberPropertyMarketAlert.Functions.csproj \
+          --configuration Release \
+          --output ./publish/functions \
+          --no-restore
+          
+    - name: Build Web App
+      run: |
+        dotnet publish src/MemberPropertyMarketAlert.Web/MemberPropertyMarketAlert.Web.csproj \
+          --configuration Release \
+          --output ./publish/web \
+          --no-restore
+          
+    - name: Upload Functions App artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: functions-app
+        path: ./publish/functions/
+        retention-days: 30
+        
+    - name: Upload Web App artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-app
+        path: ./publish/web/
+        retention-days: 30
+
+  # Deploy infrastructure
+  deploy-infrastructure:
+    name: 🏗️ Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: [validate, build]
+    if: needs.validate.outputs.should-deploy == 'true'
+    environment: ${{ github.event.inputs.environment || 'prod' }}
+    
+    outputs:
+      function-app-name: ${{ steps.deploy.outputs.functionAppName }}
+      web-app-name: ${{ steps.deploy.outputs.webAppName }}
+      function-app-url: ${{ steps.deploy.outputs.functionAppUrl }}
+      web-app-url: ${{ steps.deploy.outputs.webAppUrl }}
+      cosmos-endpoint: ${{ steps.deploy.outputs.cosmosEndpoint }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Create Resource Group
+      run: |
+        az group create \
+          --name ${{ env.AZURE_RESOURCE_GROUP }} \
+          --location "${{ env.AZURE_LOCATION }}" \
+          --tags "Project=MemberPropertyMarketAlert" "Environment=${{ github.event.inputs.environment || 'prod' }}" "DeployedBy=GitHub-Actions"
+          
+    - name: Deploy Bicep template
+      id: deploy
+      uses: azure/arm-deploy@v1
+      with:
+        subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        resourceGroupName: ${{ env.AZURE_RESOURCE_GROUP }}
+        template: ./infra/main.bicep
+        parameters: ./infra/main.${{ github.event.inputs.environment || 'prod' }}.parameters.json
+        deploymentName: 'memberpropertyalert-${{ github.run_number }}'
+        
+    - name: Configure Function App settings
+      run: |
+        # Get connection strings from deployment outputs
+        COSMOS_CONNECTION=$(az cosmosdb keys list \
+          --name ${{ steps.deploy.outputs.cosmosAccountName }} \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --type connection-strings \
+          --query "connectionStrings[0].connectionString" \
+          --output tsv)
+          
+        SERVICE_BUS_CONNECTION=$(az servicebus namespace authorization-rule keys list \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --namespace-name ${{ steps.deploy.outputs.serviceBusNamespace }} \
+          --name RootManageSharedAccessKey \
+          --query primaryConnectionString \
+          --output tsv)
+          
+        # Configure Function App
+        az functionapp config appsettings set \
+          --name ${{ steps.deploy.outputs.functionAppName }} \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --settings \
+            "CosmosDb:ConnectionString=$COSMOS_CONNECTION" \
+            "CosmosDb:DatabaseName=MemberPropertyMarketAlert" \
+            "ServiceBusConnection=$SERVICE_BUS_CONNECTION" \
+            "FUNCTIONS_WORKER_RUNTIME=dotnet-isolated" \
+            "WEBSITE_RUN_FROM_PACKAGE=1"
+
+  # Deploy applications
+  deploy-applications:
+    name: 🚀 Deploy Applications
+    runs-on: ubuntu-latest
+    needs: [validate, build, deploy-infrastructure]
+    if: needs.validate.outputs.should-deploy == 'true'
+    environment: ${{ github.event.inputs.environment || 'prod' }}
+    
+    steps:
+    - name: Download Functions App artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: functions-app
+        path: ./functions-app
+        
+    - name: Download Web App artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: web-app
+        path: ./web-app
+        
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Deploy Functions App
+      uses: Azure/functions-action@v1
+      with:
+        app-name: ${{ needs.deploy-infrastructure.outputs.function-app-name }}
+        package: './functions-app'
+        
+    - name: Deploy Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ needs.deploy-infrastructure.outputs.web-app-name }}
+        package: './web-app'
+
+  # Post-deployment testing
+  integration-tests:
+    name: 🧪 Integration Tests
+    runs-on: ubuntu-latest
+    needs: [validate, deploy-infrastructure, deploy-applications]
+    if: needs.validate.outputs.should-deploy == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Wait for applications to be ready
+      run: |
+        echo "Waiting for applications to start..."
+        sleep 120
+        
+    - name: Test Function App endpoints
+      env:
+        FUNCTION_APP_URL: ${{ needs.deploy-infrastructure.outputs.function-app-url }}
+      run: |
+        echo "Testing Function App at: $FUNCTION_APP_URL"
+        
+        # Test health endpoint (if exists)
+        curl -f "$FUNCTION_APP_URL/api/health" || echo "Health endpoint not available"
+        
+        # Test member addresses endpoint with sample data
+        echo "Testing member addresses API..."
+        
+        # Create a test address
+        RESPONSE=$(curl -s -X POST "$FUNCTION_APP_URL/api/members/addresses" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "institutionId": "test-integration-001",
+            "anonymousReferenceId": "integration-test-member",
+            "address": "123 Integration Test St",
+            "city": "Test City",
+            "state": "TX",
+            "zipCode": "12345"
+          }')
+          
+        echo "Create response: $RESPONSE"
+        
+        # Extract ID from response for cleanup
+        ADDRESS_ID=$(echo $RESPONSE | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        echo "Created address ID: $ADDRESS_ID"
+        
+        # Test retrieval
+        curl -f "$FUNCTION_APP_URL/api/members/addresses/test-integration-001" || exit 1
+        
+        # Cleanup test data
+        if [ ! -z "$ADDRESS_ID" ]; then
+          curl -X DELETE "$FUNCTION_APP_URL/api/members/addresses/$ADDRESS_ID" || echo "Cleanup failed"
+        fi
+        
+    - name: Test Web App
+      env:
+        WEB_APP_URL: ${{ needs.deploy-infrastructure.outputs.web-app-url }}
+      run: |
+        echo "Testing Web App at: $WEB_APP_URL"
+        
+        # Test home page
+        curl -f "$WEB_APP_URL" || exit 1
+        
+        # Test health endpoint
+        curl -f "$WEB_APP_URL/health" || echo "Health endpoint not available"
+        
+    - name: Performance baseline test
+      env:
+        FUNCTION_APP_URL: ${{ needs.deploy-infrastructure.outputs.function-app-url }}
+      run: |
+        echo "Running performance baseline test..."
+        
+        # Simple load test with curl
+        for i in {1..10}; do
+          START_TIME=$(date +%s%N)
+          curl -s "$FUNCTION_APP_URL/api/members/addresses/test-perf-001" > /dev/null
+          END_TIME=$(date +%s%N)
+          DURATION=$((($END_TIME - $START_TIME) / 1000000))
+          echo "Request $i: ${DURATION}ms"
+        done
+
+  # Notification and cleanup
+  notify:
+    name: 📢 Notify & Cleanup
+    runs-on: ubuntu-latest
+    needs: [validate, deploy-infrastructure, deploy-applications, integration-tests]
+    if: always() && needs.validate.outputs.should-deploy == 'true'
+    
+    steps:
+    - name: Deployment Summary
+      run: |
+        echo "## 🚀 Member Property Market Alert Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ github.event.inputs.environment || 'prod' }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment ID:** memberpropertyalert-${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Resource Group:** ${{ env.AZURE_RESOURCE_GROUP }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 Application URLs" >> $GITHUB_STEP_SUMMARY
+        echo "- **Function App:** ${{ needs.deploy-infrastructure.outputs.function-app-url }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Web App:** ${{ needs.deploy-infrastructure.outputs.web-app-url }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ Deployment Status" >> $GITHUB_STEP_SUMMARY
+        echo "- Infrastructure: ${{ needs.deploy-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Applications: ${{ needs.deploy-applications.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Integration Tests: ${{ needs.integration-tests.result }}" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Clean up artifacts
+      if: success()
+      run: |
+        echo "Deployment completed successfully. Artifacts will be retained for 30 days."

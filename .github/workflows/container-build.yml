@@ -1,0 +1,86 @@
+name: Build and Push Container Images
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'Dockerfile*'
+      - '.github/workflows/container-build.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'Dockerfile*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: memberpropertyalertacr.azurecr.io
+  
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service:
+          - name: functions
+            dockerfile: ./src/MemberPropertyMarketAlert.Functions/Dockerfile
+            context: .
+            image: memberpropertyalert-functions
+          - name: web
+            dockerfile: ./src/MemberPropertyMarketAlert.Web/Dockerfile
+            context: .
+            image: memberpropertyalert-web
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Azure Container Registry
+      if: github.event_name != 'pull_request'
+      uses: azure/docker-login@v1
+      with:
+        login-server: ${{ env.REGISTRY }}
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ matrix.service.image }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.service.context }}
+        file: ${{ matrix.service.dockerfile }}
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Run security scan
+      if: github.event_name != 'pull_request'
+      uses: azure/container-scan@v0
+      with:
+        image-name: ${{ env.REGISTRY }}/${{ matrix.service.image }}:${{ github.sha }}
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}
+        
+    - name: Upload scan results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: container-scan-results-${{ matrix.service.name }}
+        path: '**/scan-results/**/*'

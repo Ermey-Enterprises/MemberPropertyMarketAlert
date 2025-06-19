@@ -1,0 +1,238 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - test
+        - prod
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/MemberPropertyMarketAlert.Functions'
+  AZURE_WEBAPP_PACKAGE_PATH: './src/MemberPropertyMarketAlert.Web'
+
+jobs:
+  # Build and Test Job
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build solution
+      run: dotnet build --configuration Release --no-restore
+      
+    - name: Run unit tests
+      run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+      
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: '**/TestResults/**/*'
+        
+    - name: Upload build artifacts - Functions
+      uses: actions/upload-artifact@v4
+      with:
+        name: function-app
+        path: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/bin/Release/net8.0'
+        
+    - name: Upload build artifacts - Web App
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-app
+        path: '${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/bin/Release/net8.0'
+
+  # Infrastructure Deployment Job
+  deploy-infrastructure:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    
+    strategy:
+      matrix:
+        environment: 
+          - ${{ github.ref == 'refs/heads/main' && 'prod' || github.ref == 'refs/heads/develop' && 'test' || github.event.inputs.environment || 'dev' }}
+    
+    environment: ${{ matrix.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Deploy Infrastructure
+      uses: azure/arm-deploy@v1
+      id: deploy-infra
+      with:
+        subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        resourceGroupName: 'MemberPropertyMarketAlert-rg'
+        template: './infra/main.bicep'
+        parameters: './infra/main.${{ matrix.environment }}.parameters.json'
+        deploymentName: 'memberpropertyalert-${{ github.run_number }}'
+        
+    - name: Output deployment results
+      run: |
+        echo "Function App Name: ${{ steps.deploy-infra.outputs.functionAppName }}"
+        echo "Web App Name: ${{ steps.deploy-infra.outputs.webAppName }}"
+        echo "Function App URL: ${{ steps.deploy-infra.outputs.functionAppUrl }}"
+        echo "Web App URL: ${{ steps.deploy-infra.outputs.webAppUrl }}"
+
+  # Application Deployment Job
+  deploy-applications:
+    needs: [build-and-test, deploy-infrastructure]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    
+    strategy:
+      matrix:
+        environment: 
+          - ${{ github.ref == 'refs/heads/main' && 'prod' || github.ref == 'refs/heads/develop' && 'test' || github.event.inputs.environment || 'dev' }}
+    
+    environment: ${{ matrix.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download Function App artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: function-app
+        path: ./function-app
+        
+    - name: Download Web App artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: web-app
+        path: ./web-app
+        
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Get deployment outputs
+      id: get-outputs
+      run: |
+        FUNCTION_APP_NAME=$(az deployment group show \
+          --resource-group MemberPropertyMarketAlert-rg \
+          --name memberpropertyalert-${{ github.run_number }} \
+          --query "properties.outputs.functionAppName.value" \
+          --output tsv)
+        
+        WEB_APP_NAME=$(az deployment group show \
+          --resource-group MemberPropertyMarketAlert-rg \
+          --name memberpropertyalert-${{ github.run_number }} \
+          --query "properties.outputs.webAppName.value" \
+          --output tsv)
+        
+        echo "function-app-name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
+        echo "web-app-name=$WEB_APP_NAME" >> $GITHUB_OUTPUT
+        
+    - name: Deploy Function App
+      uses: Azure/functions-action@v1
+      with:
+        app-name: ${{ steps.get-outputs.outputs.function-app-name }}
+        package: './function-app'
+        
+    - name: Deploy Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ steps.get-outputs.outputs.web-app-name }}
+        package: './web-app'
+
+  # Integration Tests Job
+  integration-tests:
+    needs: deploy-applications
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    
+    strategy:
+      matrix:
+        environment: 
+          - ${{ github.ref == 'refs/heads/main' && 'prod' || github.ref == 'refs/heads/develop' && 'test' || github.event.inputs.environment || 'dev' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Get deployment outputs
+      id: get-outputs
+      run: |
+        FUNCTION_APP_URL=$(az deployment group show \
+          --resource-group MemberPropertyMarketAlert-rg \
+          --name memberpropertyalert-${{ github.run_number }} \
+          --query "properties.outputs.functionAppUrl.value" \
+          --output tsv)
+        
+        WEB_APP_URL=$(az deployment group show \
+          --resource-group MemberPropertyMarketAlert-rg \
+          --name memberpropertyalert-${{ github.run_number }} \
+          --query "properties.outputs.webAppUrl.value" \
+          --output tsv)
+        
+        echo "function-app-url=$FUNCTION_APP_URL" >> $GITHUB_OUTPUT
+        echo "web-app-url=$WEB_APP_URL" >> $GITHUB_OUTPUT
+        
+    - name: Wait for applications to be ready
+      run: |
+        echo "Waiting for applications to be ready..."
+        sleep 60
+        
+    - name: Run integration tests
+      env:
+        FUNCTION_APP_URL: ${{ steps.get-outputs.outputs.function-app-url }}
+        WEB_APP_URL: ${{ steps.get-outputs.outputs.web-app-url }}
+        ENVIRONMENT: ${{ matrix.environment }}
+      run: |
+        # Add integration test commands here
+        echo "Running integration tests against:"
+        echo "Function App: $FUNCTION_APP_URL"
+        echo "Web App: $WEB_APP_URL"
+        
+        # Example health check
+        curl -f "$FUNCTION_APP_URL/api/health" || exit 1
+        curl -f "$WEB_APP_URL/health" || exit 1
+        
+    - name: Upload integration test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: integration-test-results-${{ matrix.environment }}
+        path: '**/IntegrationTestResults/**/*'
