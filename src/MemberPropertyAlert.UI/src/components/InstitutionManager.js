@@ -5,8 +5,6 @@ import axios from 'axios';
 const InstitutionManager = () => {
   const [institutions, setInstitutions] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [selectedInstitution, setSelectedInstitution] = useState(null);
   const [newInstitution, setNewInstitution] = useState({
     name: '',
     contactEmail: '',
@@ -99,8 +97,7 @@ const InstitutionManager = () => {
   };
 
   const openSettingsModal = (institution) => {
-    setSelectedInstitution(institution);
-    setShowSettingsModal(true);
+    console.log('Open settings for institution:', institution);
   };
 
   const resetNewInstitution = () => {
