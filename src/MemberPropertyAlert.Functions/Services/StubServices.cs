@@ -333,7 +333,13 @@ namespace MemberPropertyAlert.Functions.Services
 
             try
             {
-                var listingResult = await _rentCastService.GetPropertyListingStatusAsync(address.FullAddress);
+                var listing = await _rentCastService.GetPropertyListingAsync(address.FullAddress);
+                var listingResult = new PropertyListingResult
+                {
+                    IsSuccess = listing != null,
+                    OriginalAddress = address.FullAddress,
+                    Status = listing?.IsActive == true ? PropertyStatus.Listed : PropertyStatus.NotListed
+                };
                 
                 var scanResult = new PropertyScanResult
                 {

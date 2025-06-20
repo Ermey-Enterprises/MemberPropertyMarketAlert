@@ -123,6 +123,140 @@ namespace MemberPropertyAlert.Functions.Services
             }
         }
 
+        public async Task<PropertyListing?> GetPropertyListingAsync(string address)
+        {
+            _logger.LogInformation("Getting property listing for address: {Address}", address);
+
+            try
+            {
+                var endpoint = $"/properties?address={Uri.EscapeDataString(address)}";
+                var response = await _httpClient.GetAsync(endpoint);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("RentCast API returned {StatusCode} for address {Address}", 
+                        response.StatusCode, address);
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                var apiResponse = JsonSerializer.Deserialize<RentCastApiResponse>(content, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                if (apiResponse?.Properties == null || !apiResponse.Properties.Any())
+                {
+                    return null;
+                }
+
+                var property = apiResponse.Properties.First();
+                return ConvertToPropertyListing(property);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting property listing for address {Address}", address);
+                return null;
+            }
+        }
+
+        public async Task<bool> IsPropertyListedAsync(string address)
+        {
+            var listing = await GetPropertyListingAsync(address);
+            return listing?.IsActive == true;
+        }
+
+        public async Task<PropertyListing[]> GetRecentListingsAsync(string city, string state, int daysBack = 7)
+        {
+            _logger.LogInformation("Getting recent listings for {City}, {State} (last {Days} days)", city, state, daysBack);
+
+            try
+            {
+                var endpoint = $"/listings/sale?city={Uri.EscapeDataString(city)}&state={Uri.EscapeDataString(state)}&daysBack={daysBack}";
+                var response = await _httpClient.GetAsync(endpoint);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("RentCast API returned {StatusCode} for recent listings", response.StatusCode);
+                    return Array.Empty<PropertyListing>();
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                var listings = JsonSerializer.Deserialize<List<PropertyListing>>(content, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                return listings?.ToArray() ?? Array.Empty<PropertyListing>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting recent listings for {City}, {State}", city, state);
+                return Array.Empty<PropertyListing>();
+            }
+        }
+
+        public async Task<PropertyListing[]> GetStateListingsAsync(string state)
+        {
+            _logger.LogInformation("Getting all listings for state: {State}", state);
+
+            try
+            {
+                var endpoint = $"/listings/sale?state={Uri.EscapeDataString(state)}";
+                var response = await _httpClient.GetAsync(endpoint);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("RentCast API returned {StatusCode} for state listings", response.StatusCode);
+                    return Array.Empty<PropertyListing>();
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                var listings = JsonSerializer.Deserialize<List<PropertyListing>>(content, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                return listings?.ToArray() ?? Array.Empty<PropertyListing>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting state listings for {State}", state);
+                return Array.Empty<PropertyListing>();
+            }
+        }
+
+        public async Task<PropertyListing[]> GetNewListingsAsync(string state, DateTime since)
+        {
+            _logger.LogInformation("Getting new listings for state {State} since {Since}", state, since);
+
+            try
+            {
+                var sinceParam = since.ToString("yyyy-MM-dd");
+                var endpoint = $"/listings/sale?state={Uri.EscapeDataString(state)}&listedSince={sinceParam}";
+                var response = await _httpClient.GetAsync(endpoint);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("RentCast API returned {StatusCode} for new listings", response.StatusCode);
+                    return Array.Empty<PropertyListing>();
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                var listings = JsonSerializer.Deserialize<List<PropertyListing>>(content, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                return listings?.ToArray() ?? Array.Empty<PropertyListing>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting new listings for {State} since {Since}", state, since);
+                return Array.Empty<PropertyListing>();
+            }
+        }
+
         private PropertyListingResult ProcessApiResponse(RentCastApiResponse? apiResponse, string originalAddress)
         {
             if (apiResponse?.Properties == null || !apiResponse.Properties.Any())
@@ -198,6 +332,69 @@ namespace MemberPropertyAlert.Functions.Services
                     ["year_built"] = property.YearBuilt ?? 0
                 }
             };
+        }
+
+        private PropertyListing ConvertToPropertyListing(RentCastProperty property)
+        {
+            return new PropertyListing
+            {
+                Id = property.Id ?? Guid.NewGuid().ToString(),
+                Address = ExtractAddress(property.FormattedAddress),
+                City = ExtractCity(property.FormattedAddress),
+                State = ExtractState(property.FormattedAddress),
+                ZipCode = ExtractZipCode(property.FormattedAddress),
+                Price = property.ForSale?.Price,
+                Bedrooms = property.Bedrooms,
+                Bathrooms = property.Bathrooms,
+                SquareFootage = property.SquareFeet,
+                ListingDate = property.ForSale?.ListDate,
+                DaysOnMarket = property.ForSale?.DaysOnMarket,
+                PropertyType = property.PropertyType ?? string.Empty,
+                MlsNumber = property.ForSale?.MlsId ?? string.Empty,
+                ListingAgent = property.ForSale?.ListingAgent ?? string.Empty,
+                Description = property.Description ?? string.Empty,
+                Photos = property.Photos ?? new List<string>(),
+                Status = property.ForSale?.Status ?? "unknown",
+                LastUpdated = DateTime.UtcNow
+            };
+        }
+
+        private string ExtractAddress(string? formattedAddress)
+        {
+            if (string.IsNullOrEmpty(formattedAddress)) return string.Empty;
+            var parts = formattedAddress.Split(',');
+            return parts.Length > 0 ? parts[0].Trim() : string.Empty;
+        }
+
+        private string ExtractCity(string? formattedAddress)
+        {
+            if (string.IsNullOrEmpty(formattedAddress)) return string.Empty;
+            var parts = formattedAddress.Split(',');
+            return parts.Length > 1 ? parts[1].Trim() : string.Empty;
+        }
+
+        private string ExtractState(string? formattedAddress)
+        {
+            if (string.IsNullOrEmpty(formattedAddress)) return string.Empty;
+            var parts = formattedAddress.Split(',');
+            if (parts.Length > 2)
+            {
+                var stateZip = parts[2].Trim().Split(' ');
+                return stateZip.Length > 0 ? stateZip[0].Trim() : string.Empty;
+            }
+            return string.Empty;
+        }
+
+        private string ExtractZipCode(string? formattedAddress)
+        {
+            if (string.IsNullOrEmpty(formattedAddress)) return string.Empty;
+            var parts = formattedAddress.Split(',');
+            if (parts.Length > 2)
+            {
+                var stateZip = parts[2].Trim().Split(' ');
+                return stateZip.Length > 1 ? stateZip[1].Trim() : string.Empty;
+            }
+            return string.Empty;
         }
     }
 
