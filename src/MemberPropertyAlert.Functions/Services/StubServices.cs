@@ -22,7 +22,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<NotificationResult> SendWebhookAsync(PropertyAlert alert, Institution institution)
         {
-            _logger.LogInformation("Sending webhook for alert {AlertId} to institution {InstitutionId}", 
+            _logger.LogInformation("Sending webhook for alert {AlertId} to institution {InstitutionId}",
                 alert.Id, institution.Id);
 
             // TODO: Implement actual webhook sending logic
@@ -41,7 +41,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<NotificationResult> SendBulkWebhookAsync(List<PropertyAlert> alerts, Institution institution)
         {
-            _logger.LogInformation("Sending bulk webhook for {Count} alerts to institution {InstitutionId}", 
+            _logger.LogInformation("Sending bulk webhook for {Count} alerts to institution {InstitutionId}",
                 alerts.Count, institution.Id);
 
             // TODO: Implement bulk webhook logic
@@ -67,26 +67,26 @@ namespace MemberPropertyAlert.Functions.Services
         public async Task<List<NotificationResult>> ProcessPendingAlertsAsync()
         {
             _logger.LogInformation("Processing pending alerts");
-            
+
             // TODO: Implement pending alert processing
             await Task.Delay(50);
-            
+
             return new List<NotificationResult>();
         }
 
         public async Task<bool> ValidateWebhookEndpointAsync(string webhookUrl, string? authHeader = null)
         {
             _logger.LogInformation("Validating webhook endpoint: {WebhookUrl}", webhookUrl);
-            
+
             // TODO: Implement webhook validation
             await Task.Delay(100);
-            
+
             return Uri.TryCreate(webhookUrl, UriKind.Absolute, out _);
         }
 
         public async Task<List<NotificationResult>> SendNotificationAsync(PropertyAlert alert, Institution institution)
         {
-            _logger.LogInformation("Sending notification for alert {AlertId} to institution {InstitutionId}", 
+            _logger.LogInformation("Sending notification for alert {AlertId} to institution {InstitutionId}",
                 alert.Id, institution.Id);
 
             var results = new List<NotificationResult>();
@@ -109,7 +109,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<List<NotificationResult>> SendBulkNotificationAsync(List<PropertyAlert> alerts, Institution institution)
         {
-            _logger.LogInformation("Sending bulk notification for {Count} alerts to institution {InstitutionId}", 
+            _logger.LogInformation("Sending bulk notification for {Count} alerts to institution {InstitutionId}",
                 alerts.Count, institution.Id);
 
             var results = new List<NotificationResult>();
@@ -138,7 +138,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<NotificationResult> SendEmailAsync(PropertyAlert alert, Institution institution)
         {
-            _logger.LogInformation("Sending email for alert {AlertId} to institution {InstitutionId}", 
+            _logger.LogInformation("Sending email for alert {AlertId} to institution {InstitutionId}",
                 alert.Id, institution.Id);
 
             // TODO: Implement email sending logic
@@ -157,7 +157,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<NotificationResult> SendBulkEmailAsync(List<PropertyAlert> alerts, Institution institution)
         {
-            _logger.LogInformation("Sending bulk email for {Count} alerts to institution {InstitutionId}", 
+            _logger.LogInformation("Sending bulk email for {Count} alerts to institution {InstitutionId}",
                 alerts.Count, institution.Id);
 
             // TODO: Implement bulk email sending logic
@@ -176,7 +176,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<NotificationResult> SendCsvAsync(List<PropertyAlert> alerts, Institution institution)
         {
-            _logger.LogInformation("Sending CSV for {Count} alerts to institution {InstitutionId}", 
+            _logger.LogInformation("Sending CSV for {Count} alerts to institution {InstitutionId}",
                 alerts.Count, institution.Id);
 
             // TODO: Implement CSV generation and delivery
@@ -195,7 +195,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<NotificationResult> GenerateCsvReportAsync(List<PropertyAlert> alerts, Institution institution)
         {
-            _logger.LogInformation("Generating CSV report for {Count} alerts for institution {InstitutionId}", 
+            _logger.LogInformation("Generating CSV report for {Count} alerts for institution {InstitutionId}",
                 alerts.Count, institution.Id);
 
             // TODO: Implement CSV generation logic
@@ -225,7 +225,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<NotificationResult> RetryFailedNotificationAsync(string notificationId, Institution institution)
         {
-            _logger.LogInformation("Retrying failed notification {NotificationId} for institution {InstitutionId}", 
+            _logger.LogInformation("Retrying failed notification {NotificationId} for institution {InstitutionId}",
                 notificationId, institution.Id);
 
             // TODO: Implement notification retry logic
@@ -259,45 +259,45 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task SendScanUpdateAsync(string institutionId, ScanUpdateMessage message)
         {
-            _logger.LogInformation("Sending scan update to institution {InstitutionId}: {Message}", 
+            _logger.LogInformation("Sending scan update to institution {InstitutionId}: {Message}",
                 institutionId, message.Message);
-            
+
             // TODO: Implement SignalR message sending
             await Task.Delay(10);
         }
 
         public async Task SendAlertNotificationAsync(string institutionId, PropertyAlert alert)
         {
-            _logger.LogInformation("Sending alert notification to institution {InstitutionId} for alert {AlertId}", 
+            _logger.LogInformation("Sending alert notification to institution {InstitutionId} for alert {AlertId}",
                 institutionId, alert.Id);
-            
+
             // TODO: Implement SignalR alert notification
             await Task.Delay(10);
         }
 
         public async Task SendSystemStatusAsync(SystemStatusMessage message)
         {
-            _logger.LogInformation("Sending system status: {Component} - {Status}", 
+            _logger.LogInformation("Sending system status: {Component} - {Status}",
                 message.Component, message.Status);
-            
+
             // TODO: Implement SignalR system status broadcast
             await Task.Delay(10);
         }
 
         public async Task JoinInstitutionGroupAsync(string connectionId, string institutionId)
         {
-            _logger.LogDebug("Adding connection {ConnectionId} to institution group {InstitutionId}", 
+            _logger.LogDebug("Adding connection {ConnectionId} to institution group {InstitutionId}",
                 connectionId, institutionId);
-            
+
             // TODO: Implement SignalR group management
             await Task.Delay(5);
         }
 
         public async Task LeaveInstitutionGroupAsync(string connectionId, string institutionId)
         {
-            _logger.LogDebug("Removing connection {ConnectionId} from institution group {InstitutionId}", 
+            _logger.LogDebug("Removing connection {ConnectionId} from institution group {InstitutionId}",
                 connectionId, institutionId);
-            
+
             // TODO: Implement SignalR group management
             await Task.Delay(5);
         }
@@ -322,7 +322,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<ScanScheduleResult> CreateScheduleAsync(string institutionId, ScanSchedule schedule)
         {
-            _logger.LogInformation("Creating scan schedule for institution {InstitutionId}: {ScheduleName}", 
+            _logger.LogInformation("Creating scan schedule for institution {InstitutionId}: {ScheduleName}",
                 institutionId, schedule.Name);
 
             // TODO: Implement schedule creation with cron validation
@@ -338,7 +338,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<ScanScheduleResult> UpdateScheduleAsync(string institutionId, ScanSchedule schedule)
         {
-            _logger.LogInformation("Updating scan schedule {ScheduleId} for institution {InstitutionId}", 
+            _logger.LogInformation("Updating scan schedule {ScheduleId} for institution {InstitutionId}",
                 schedule.Id, institutionId);
 
             await Task.Delay(50);
@@ -353,7 +353,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task DeleteScheduleAsync(string institutionId, string scheduleId)
         {
-            _logger.LogInformation("Deleting scan schedule {ScheduleId} for institution {InstitutionId}", 
+            _logger.LogInformation("Deleting scan schedule {ScheduleId} for institution {InstitutionId}",
                 scheduleId, institutionId);
 
             // TODO: Implement schedule deletion
@@ -498,7 +498,7 @@ namespace MemberPropertyAlert.Functions.Services
                     OriginalAddress = address.FullAddress,
                     Status = listing?.IsActive == true ? PropertyStatus.Listed : PropertyStatus.NotListed
                 };
-                
+
                 var scanResult = new PropertyScanResult
                 {
                     AddressId = address.Id,
@@ -585,7 +585,7 @@ namespace MemberPropertyAlert.Functions.Services
             await Task.Delay(5);
 
             // Generate alert if status changed from NotListed to Listed
-            return address.LastKnownStatus == PropertyStatus.NotListed && 
+            return address.LastKnownStatus == PropertyStatus.NotListed &&
                    result.Status == PropertyStatus.Listed;
         }
     }

@@ -53,7 +53,7 @@ namespace MemberPropertyAlert.Functions.Api
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Summary = "List of institutions", Description = "Successfully retrieved institutions")]
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(object), Summary = "Internal server error", Description = "An error occurred while processing the request")]
         public async Task<HttpResponseData> GetInstitutions(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "institutions")] 
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "institutions")]
             HttpRequestData req)
         {
             _logger.LogInformation("Getting all institutions");
@@ -83,7 +83,7 @@ namespace MemberPropertyAlert.Functions.Api
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Summary = "Bad request", Description = "Invalid request body")]
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(object), Summary = "Internal server error", Description = "An error occurred while processing the request")]
         public async Task<HttpResponseData> CreateInstitution(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "institutions")] 
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "institutions")]
             HttpRequestData req)
         {
             _logger.LogInformation("Creating new institution");
@@ -145,7 +145,7 @@ namespace MemberPropertyAlert.Functions.Api
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Summary = "Institution not found", Description = "Institution with the specified ID was not found")]
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(object), Summary = "Internal server error", Description = "An error occurred while processing the request")]
         public async Task<HttpResponseData> GetInstitution(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "institutions/{institutionId}")] 
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "institutions/{institutionId}")]
             HttpRequestData req,
             string institutionId)
         {
@@ -179,7 +179,7 @@ namespace MemberPropertyAlert.Functions.Api
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Summary = "Institution not found", Description = "Institution with the specified ID was not found")]
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(object), Summary = "Internal server error", Description = "An error occurred while processing the request")]
         public async Task<HttpResponseData> UpdateInstitution(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "institutions/{institutionId}")] 
+            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "institutions/{institutionId}")]
             HttpRequestData req,
             string institutionId)
         {
@@ -248,7 +248,7 @@ namespace MemberPropertyAlert.Functions.Api
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Summary = "Institution not found", Description = "Institution with the specified ID was not found")]
         [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(object), Summary = "Internal server error", Description = "An error occurred while processing the request")]
         public async Task<HttpResponseData> DeleteInstitution(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "institutions/{institutionId}")] 
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "institutions/{institutionId}")]
             HttpRequestData req,
             string institutionId)
         {
@@ -282,11 +282,11 @@ namespace MemberPropertyAlert.Functions.Api
         private async Task<HttpResponseData> CreateValidationErrorResponse(HttpRequestData req, ValidationResult validationResult)
         {
             var response = req.CreateResponse(HttpStatusCode.BadRequest);
-            await response.WriteAsJsonAsync(new 
-            { 
-                Error = "Validation failed", 
+            await response.WriteAsJsonAsync(new
+            {
+                Error = "Validation failed",
                 ValidationErrors = validationResult.ValidationErrors,
-                Timestamp = DateTime.UtcNow 
+                Timestamp = DateTime.UtcNow
             });
             return response;
         }

@@ -34,9 +34,9 @@ namespace MemberPropertyAlert.Functions.Services
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("RentCast API returned {StatusCode} for address {Address}", 
+                    _logger.LogWarning("RentCast API returned {StatusCode} for address {Address}",
                         response.StatusCode, address);
-                    
+
                     return new PropertyListingResult
                     {
                         IsSuccess = false,
@@ -57,7 +57,7 @@ namespace MemberPropertyAlert.Functions.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error checking property listing status for address {Address}", address);
-                
+
                 return new PropertyListingResult
                 {
                     IsSuccess = false,
@@ -105,12 +105,12 @@ namespace MemberPropertyAlert.Functions.Services
             try
             {
                 _logger.LogInformation("Validating RentCast API key");
-                
+
                 // Test with a simple endpoint
                 var response = await _httpClient.GetAsync("/properties?address=123%20Main%20St,%20Anytown,%20CA%2012345");
-                
+
                 // Even if the property doesn't exist, a valid API key should return 200 or 404, not 401/403
-                var isValid = response.StatusCode != System.Net.HttpStatusCode.Unauthorized && 
+                var isValid = response.StatusCode != System.Net.HttpStatusCode.Unauthorized &&
                              response.StatusCode != System.Net.HttpStatusCode.Forbidden;
 
                 _logger.LogInformation("API key validation result: {IsValid}", isValid);
@@ -134,7 +134,7 @@ namespace MemberPropertyAlert.Functions.Services
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("RentCast API returned {StatusCode} for address {Address}", 
+                    _logger.LogWarning("RentCast API returned {StatusCode} for address {Address}",
                         response.StatusCode, address);
                     return null;
                 }

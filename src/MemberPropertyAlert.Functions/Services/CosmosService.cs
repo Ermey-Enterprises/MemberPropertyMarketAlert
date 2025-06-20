@@ -34,9 +34,9 @@ namespace MemberPropertyAlert.Functions.Services
                 // Create database
                 var databaseResponse = await _cosmosClient.CreateDatabaseIfNotExistsAsync(
                     _config.DatabaseName,
-                    _config.EnableAutoscale ? ThroughputProperties.CreateAutoscaleThroughput(_config.MaxThroughput) : 
+                    _config.EnableAutoscale ? ThroughputProperties.CreateAutoscaleThroughput(_config.MaxThroughput) :
                                             ThroughputProperties.CreateManualThroughput(_config.DefaultThroughput));
-                
+
                 _database = databaseResponse.Database;
                 _logger.LogInformation("Database {DatabaseName} initialized", _config.DatabaseName);
 
@@ -67,7 +67,7 @@ namespace MemberPropertyAlert.Functions.Services
                 throw new InvalidOperationException("Database not initialized");
 
             var containerProperties = new ContainerProperties(containerName, partitionKeyPath);
-            
+
             // Add indexing policy for better query performance
             containerProperties.IndexingPolicy.IndexingMode = IndexingMode.Consistent;
             containerProperties.IndexingPolicy.Automatic = true;
@@ -148,7 +148,7 @@ namespace MemberPropertyAlert.Functions.Services
                 // Since we don't know the partition key, we need to query
                 var query = new QueryDefinition("SELECT * FROM c WHERE c.id = @addressId")
                     .WithParameter("@addressId", addressId);
-                
+
                 var iterator = _addressesContainer!.GetItemQueryIterator<MemberAddress>(query);
                 var response = await iterator.ReadNextAsync();
                 return response.FirstOrDefault();
@@ -185,7 +185,7 @@ namespace MemberPropertyAlert.Functions.Services
             EnsureInitialized();
             var query = new QueryDefinition("SELECT * FROM c WHERE c.institutionId = @institutionId")
                 .WithParameter("@institutionId", institutionId);
-            
+
             return await ExecuteQueryAsync<MemberAddress>(_addressesContainer!, query);
         }
 
@@ -259,7 +259,7 @@ namespace MemberPropertyAlert.Functions.Services
             {
                 var query = new QueryDefinition("SELECT * FROM c WHERE c.id = @alertId")
                     .WithParameter("@alertId", alertId);
-                
+
                 var iterator = _alertsContainer!.GetItemQueryIterator<PropertyAlert>(query);
                 var response = await iterator.ReadNextAsync();
                 return response.FirstOrDefault();
@@ -296,7 +296,7 @@ namespace MemberPropertyAlert.Functions.Services
             EnsureInitialized();
             var query = new QueryDefinition("SELECT * FROM c WHERE c.status = @status")
                 .WithParameter("@status", AlertStatus.Pending.ToString());
-            
+
             return await ExecuteQueryAsync<PropertyAlert>(_alertsContainer!, query);
         }
 
@@ -305,7 +305,7 @@ namespace MemberPropertyAlert.Functions.Services
             EnsureInitialized();
             var query = new QueryDefinition("SELECT * FROM c WHERE c.status = @status")
                 .WithParameter("@status", status.ToString());
-            
+
             return await ExecuteQueryAsync<PropertyAlert>(_alertsContainer!, query);
         }
 
@@ -330,7 +330,7 @@ namespace MemberPropertyAlert.Functions.Services
             {
                 var query = new QueryDefinition("SELECT * FROM c WHERE c.id = @scanLogId")
                     .WithParameter("@scanLogId", scanLogId);
-                
+
                 var iterator = _scanLogsContainer!.GetItemQueryIterator<ScanLog>(query);
                 var response = await iterator.ReadNextAsync();
                 return response.FirstOrDefault();
@@ -372,7 +372,7 @@ namespace MemberPropertyAlert.Functions.Services
             EnsureInitialized();
             var query = new QueryDefinition("SELECT * FROM c ORDER BY c.startedAt DESC");
             var requestOptions = new QueryRequestOptions { MaxItemCount = limit };
-            
+
             return await ExecuteQueryAsync<ScanLog>(_scanLogsContainer!, query, requestOptions);
         }
 
@@ -437,7 +437,7 @@ namespace MemberPropertyAlert.Functions.Services
                 TotalAlertsGenerated = scanLogs.Sum(s => s.AlertsGenerated),
                 TotalApiCalls = scanLogs.Sum(s => s.ApiCallsMade),
                 TotalErrors = scanLogs.Sum(s => s.ErrorsEncountered),
-                AverageScanDuration = scanLogs.Where(s => s.Duration.HasValue).Any() 
+                AverageScanDuration = scanLogs.Where(s => s.Duration.HasValue).Any()
                     ? TimeSpan.FromTicks((long)scanLogs.Where(s => s.Duration.HasValue).Average(s => s.Duration!.Value.Ticks))
                     : TimeSpan.Zero,
                 LastScanAt = scanLogs.Max(s => s.StartedAt),
@@ -450,8 +450,8 @@ namespace MemberPropertyAlert.Functions.Services
         {
             EnsureInitialized();
             // Simplified implementation
-            var institutions = string.IsNullOrEmpty(institutionId) 
-                ? await GetAllInstitutionsAsync() 
+            var institutions = string.IsNullOrEmpty(institutionId)
+                ? await GetAllInstitutionsAsync()
                 : new List<Institution> { (await GetInstitutionAsync(institutionId))! };
 
             var summaries = new List<AlertSummary>();
@@ -459,10 +459,10 @@ namespace MemberPropertyAlert.Functions.Services
             foreach (var institution in institutions.Where(i => i != null))
             {
                 var alerts = await GetAlertsByInstitutionAsync(institution.Id);
-                
+
                 if (fromDate.HasValue)
                     alerts = alerts.Where(a => a.CreatedAt >= fromDate.Value).ToList();
-                
+
                 if (toDate.HasValue)
                     alerts = alerts.Where(a => a.CreatedAt <= toDate.Value).ToList();
 
@@ -498,7 +498,7 @@ namespace MemberPropertyAlert.Functions.Services
 
         private void EnsureInitialized()
         {
-            if (_database == null || _institutionsContainer == null || _addressesContainer == null || 
+            if (_database == null || _institutionsContainer == null || _addressesContainer == null ||
                 _alertsContainer == null || _scanLogsContainer == null)
             {
                 throw new InvalidOperationException("CosmosService not initialized. Call InitializeDatabaseAsync first.");

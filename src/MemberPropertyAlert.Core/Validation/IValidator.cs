@@ -70,7 +70,7 @@ namespace MemberPropertyAlert.Core.Validation
                 return;
             }
 
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || 
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
                 (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             {
                 AddError(propertyName, $"{propertyName} must be a valid HTTP or HTTPS URL", url);
@@ -101,8 +101,8 @@ namespace MemberPropertyAlert.Core.Validation
 
         protected ValidationResult GetResult()
         {
-            return _errors.Any() 
-                ? ValidationResult.Failure(_errors.ToList()) 
+            return _errors.Any()
+                ? ValidationResult.Failure(_errors.ToList())
                 : ValidationResult.Success();
         }
 

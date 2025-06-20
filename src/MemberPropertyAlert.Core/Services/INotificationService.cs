@@ -9,19 +9,19 @@ namespace MemberPropertyAlert.Core.Services
         Task<NotificationResult> SendBulkWebhookAsync(List<PropertyAlert> alerts, Institution institution);
         Task<NotificationResult> RetryFailedWebhookAsync(PropertyAlert alert, Institution institution);
         Task<bool> ValidateWebhookEndpointAsync(string webhookUrl, string? authHeader = null);
-        
+
         // Email notifications
         Task<NotificationResult> SendEmailAsync(PropertyAlert alert, Institution institution);
         Task<NotificationResult> SendBulkEmailAsync(List<PropertyAlert> alerts, Institution institution);
-        
+
         // CSV notifications
         Task<NotificationResult> SendCsvAsync(List<PropertyAlert> alerts, Institution institution);
         Task<NotificationResult> GenerateCsvReportAsync(List<PropertyAlert> alerts, Institution institution);
-        
+
         // Multi-method delivery
         Task<List<NotificationResult>> SendNotificationAsync(PropertyAlert alert, Institution institution);
         Task<List<NotificationResult>> SendBulkNotificationAsync(List<PropertyAlert> alerts, Institution institution);
-        
+
         // Processing and management
         Task<List<NotificationResult>> ProcessPendingAlertsAsync();
         Task<NotificationResult> RetryFailedNotificationAsync(string notificationId, Institution institution);

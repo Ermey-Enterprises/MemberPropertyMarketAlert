@@ -24,7 +24,7 @@ namespace MemberPropertyAlert.Functions.Middleware
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unhandled exception in function {FunctionName}", 
+                _logger.LogError(ex, "Unhandled exception in function {FunctionName}",
                     context.FunctionDefinition.Name);
 
                 var httpRequestData = await context.GetHttpRequestDataAsync();
@@ -36,7 +36,7 @@ namespace MemberPropertyAlert.Functions.Middleware
                 else
                 {
                     // For non-HTTP triggered functions, just log the error
-                    _logger.LogError(ex, "Function {FunctionName} failed with exception", 
+                    _logger.LogError(ex, "Function {FunctionName} failed with exception",
                         context.FunctionDefinition.Name);
                     throw;
                 }

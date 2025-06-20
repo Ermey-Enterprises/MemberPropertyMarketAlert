@@ -63,15 +63,15 @@ var host = new HostBuilder()
         // Azure Services
         services.AddSingleton<CosmosClient>(provider =>
         {
-            var cosmosConnectionString = configuration.GetConnectionString("CosmosDB") ?? 
+            var cosmosConnectionString = configuration.GetConnectionString("CosmosDB") ??
                                        configuration["CosmosDB__ConnectionString"];
-            
+
             if (string.IsNullOrEmpty(cosmosConnectionString))
             {
                 // Return a mock client for development
                 return new CosmosClient("AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==");
             }
-            
+
             var options = new CosmosClientOptions
             {
                 ConnectionMode = ConnectionMode.Gateway,
@@ -84,15 +84,15 @@ var host = new HostBuilder()
 
         services.AddSingleton<ServiceBusClient>(provider =>
         {
-            var connectionString = configuration.GetConnectionString("ServiceBus") ?? 
+            var connectionString = configuration.GetConnectionString("ServiceBus") ??
                                  configuration["ServiceBus__ConnectionString"];
-            
+
             if (string.IsNullOrEmpty(connectionString))
             {
                 // Return null for development - services will handle gracefully
                 return null!;
             }
-            
+
             return new ServiceBusClient(connectionString);
         });
 
@@ -102,15 +102,15 @@ var host = new HostBuilder()
             var apiKey = configuration["RentCast__ApiKey"];
             var baseUrl = configuration["RentCast__BaseUrl"] ?? "https://api.rentcast.io/v1";
             var timeout = int.Parse(configuration["RentCast__TimeoutSeconds"] ?? "30");
-            
+
             client.BaseAddress = new Uri(baseUrl);
             client.Timeout = TimeSpan.FromSeconds(timeout);
-            
+
             if (!string.IsNullOrEmpty(apiKey))
             {
                 client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
             }
-            
+
             client.DefaultRequestHeaders.Add("User-Agent", "MemberPropertyAlert/1.0");
         });
 
@@ -140,7 +140,7 @@ try
     using var scope = host.Services.CreateScope();
     var cosmosService = scope.ServiceProvider.GetRequiredService<ICosmosService>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
+
     await cosmosService.InitializeDatabaseAsync();
     logger.LogInformation("Cosmos DB initialized successfully");
 }

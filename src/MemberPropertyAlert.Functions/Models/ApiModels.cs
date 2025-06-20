@@ -9,21 +9,21 @@ namespace MemberPropertyAlert.Functions.Models
     {
         [Required]
         public string AnonymousMemberId { get; set; } = string.Empty;
-        
+
         [Required]
         public string StreetAddress { get; set; } = string.Empty;
-        
+
         [Required]
         public string City { get; set; } = string.Empty;
-        
+
         [Required]
         public string State { get; set; } = string.Empty;
-        
+
         [Required]
         public string ZipCode { get; set; } = string.Empty;
-        
+
         public string? Priority { get; set; }
-        
+
         public Dictionary<string, object>? Metadata { get; set; }
     }
 
@@ -169,17 +169,17 @@ namespace MemberPropertyAlert.Functions.Models
     {
         [Required]
         public string Name { get; set; } = string.Empty;
-        
+
         [Required]
         [EmailAddress]
         public string ContactEmail { get; set; } = string.Empty;
-        
+
         public string? WebhookUrl { get; set; }
-        
+
         public string? WebhookAuthHeader { get; set; }
-        
+
         public WebhookRetryPolicy? RetryPolicy { get; set; }
-        
+
         public NotificationSettings? NotificationSettings { get; set; }
     }
 
@@ -223,10 +223,10 @@ namespace MemberPropertyAlert.Functions.Models
     {
         [Required]
         public string Name { get; set; } = string.Empty;
-        
+
         [Required]
         public string CronExpression { get; set; } = string.Empty;
-        
+
         public string? AddressFilter { get; set; }
     }
 

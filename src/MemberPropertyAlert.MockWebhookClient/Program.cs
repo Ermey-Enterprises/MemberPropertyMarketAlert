@@ -45,7 +45,7 @@ app.MapPost("/webhook", async (HttpContext context, ILogger<Program> logger) =>
     {
         var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
         var headers = context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString());
-        
+
         var webhook = new WebhookReceived
         {
             Id = Guid.NewGuid().ToString(),

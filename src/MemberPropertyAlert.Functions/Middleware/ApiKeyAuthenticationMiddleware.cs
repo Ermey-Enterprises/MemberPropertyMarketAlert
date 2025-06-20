@@ -35,14 +35,14 @@ namespace MemberPropertyAlert.Functions.Middleware
 
                 if (!await IsValidApiKey(httpRequestData))
                 {
-                    _logger.LogWarning("Unauthorized API request from {RemoteIpAddress}", 
+                    _logger.LogWarning("Unauthorized API request from {RemoteIpAddress}",
                         httpRequestData.Headers.GetValues("X-Forwarded-For").FirstOrDefault() ?? "Unknown");
 
                     var response = httpRequestData.CreateResponse(HttpStatusCode.Unauthorized);
-                    await response.WriteAsJsonAsync(new 
-                    { 
+                    await response.WriteAsJsonAsync(new
+                    {
                         Error = "Invalid or missing API key",
-                        Timestamp = DateTime.UtcNow 
+                        Timestamp = DateTime.UtcNow
                     });
 
                     context.GetInvocationResult().Value = response;

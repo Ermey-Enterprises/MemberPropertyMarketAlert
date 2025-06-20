@@ -39,7 +39,7 @@ namespace MemberPropertyAlert.Functions.Services
 
             // Find or generate a mock property for this address
             var mockProperty = FindOrCreateMockProperty(address);
-            
+
             return ConvertToPropertyListing(mockProperty);
         }
 
@@ -131,7 +131,7 @@ namespace MemberPropertyAlert.Functions.Services
         private List<MockPropertyData> GenerateMockProperties()
         {
             var properties = new List<MockPropertyData>();
-            
+
             // Generate some consistent mock properties for testing
             var addresses = new[]
             {
@@ -182,7 +182,7 @@ namespace MemberPropertyAlert.Functions.Services
         private MockPropertyData FindOrCreateMockProperty(string address)
         {
             // Try to find existing mock property
-            var existing = _mockProperties.FirstOrDefault(p => 
+            var existing = _mockProperties.FirstOrDefault(p =>
                 p.Address.Equals(ExtractStreetAddress(address), StringComparison.OrdinalIgnoreCase));
 
             if (existing != null)
@@ -202,7 +202,7 @@ namespace MemberPropertyAlert.Functions.Services
         private MockPropertyData GenerateRandomMockProperty(string city, string state, string? streetAddress = null)
         {
             var propertyTypes = new[] { "Single Family", "Townhouse", "Condo", "Duplex" };
-            
+
             return new MockPropertyData
             {
                 Id = Guid.NewGuid().ToString(),

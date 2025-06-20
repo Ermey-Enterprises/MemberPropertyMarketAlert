@@ -27,7 +27,7 @@ namespace MemberPropertyAlert.Functions.Api
 
         [Function("CreateAddress")]
         public async Task<HttpResponseData> CreateAddress(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "institutions/{institutionId}/addresses")] 
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "institutions/{institutionId}/addresses")]
             HttpRequestData req,
             string institutionId)
         {
@@ -82,7 +82,7 @@ namespace MemberPropertyAlert.Functions.Api
 
         [Function("GetAddresses")]
         public async Task<HttpResponseData> GetAddresses(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "institutions/{institutionId}/addresses")] 
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "institutions/{institutionId}/addresses")]
             HttpRequestData req,
             string institutionId)
         {
@@ -115,7 +115,7 @@ namespace MemberPropertyAlert.Functions.Api
 
         [Function("GetAddress")]
         public async Task<HttpResponseData> GetAddress(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "addresses/{addressId}")] 
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "addresses/{addressId}")]
             HttpRequestData req,
             string addressId)
         {
@@ -142,7 +142,7 @@ namespace MemberPropertyAlert.Functions.Api
 
         [Function("UpdateAddress")]
         public async Task<HttpResponseData> UpdateAddress(
-            [HttpTrigger(AuthorizationLevel.Function, "put", Route = "addresses/{addressId}")] 
+            [HttpTrigger(AuthorizationLevel.Function, "put", Route = "addresses/{addressId}")]
             HttpRequestData req,
             string addressId)
         {
@@ -202,7 +202,7 @@ namespace MemberPropertyAlert.Functions.Api
 
         [Function("DeleteAddress")]
         public async Task<HttpResponseData> DeleteAddress(
-            [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "addresses/{addressId}")] 
+            [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "addresses/{addressId}")]
             HttpRequestData req,
             string addressId)
         {
@@ -232,7 +232,7 @@ namespace MemberPropertyAlert.Functions.Api
 
         [Function("CreateBulkAddresses")]
         public async Task<HttpResponseData> CreateBulkAddresses(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "institutions/{institutionId}/addresses/bulk")] 
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "institutions/{institutionId}/addresses/bulk")]
             HttpRequestData req,
             string institutionId)
         {

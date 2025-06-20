@@ -69,6 +69,6 @@ public class PropertyListing
 
     // Additional properties for matching
     public string FormattedAddress => $"{Address}, {City}, {State} {ZipCode}".Trim();
-    
+
     public bool IsActive => Status?.ToLower() == "active" || Status?.ToLower() == "for sale";
 }

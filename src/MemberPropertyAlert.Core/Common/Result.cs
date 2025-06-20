@@ -58,14 +58,14 @@ namespace MemberPropertyAlert.Core.Common
     {
         public List<ValidationError> ValidationErrors { get; }
 
-        private ValidationResult(bool isSuccess, string error, List<ValidationError> validationErrors) 
+        private ValidationResult(bool isSuccess, string error, List<ValidationError> validationErrors)
             : base(isSuccess, error)
         {
             ValidationErrors = validationErrors ?? new List<ValidationError>();
         }
 
         public static ValidationResult Success() => new(true, string.Empty, new List<ValidationError>());
-        
+
         public static ValidationResult Failure(List<ValidationError> validationErrors)
         {
             var error = string.Join("; ", validationErrors.Select(e => $"{e.PropertyName}: {e.ErrorMessage}"));
