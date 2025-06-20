@@ -58,7 +58,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: 'src/MemberPropertyAlert.UI/package-lock.json'
+          cache-dependency-path: 'src/MemberPropertyAlert.UI/package.json'
       
       - name: Cache NuGet packages
         uses: actions/cache@v4
