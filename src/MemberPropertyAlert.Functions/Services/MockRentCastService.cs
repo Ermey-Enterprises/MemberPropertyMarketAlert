@@ -245,7 +245,7 @@ namespace MemberPropertyAlert.Functions.Services
                 Description = mockProperty.Description,
                 Photos = mockProperty.Photos,
                 Status = mockProperty.Status,
-                IsActive = mockProperty.IsListed,
+                // IsActive is calculated from other properties
                 LastUpdated = DateTime.UtcNow
             };
         }

@@ -83,6 +83,164 @@ namespace MemberPropertyAlert.Functions.Services
             
             return Uri.TryCreate(webhookUrl, UriKind.Absolute, out _);
         }
+
+        public async Task<List<NotificationResult>> SendNotificationAsync(PropertyAlert alert, Institution institution)
+        {
+            _logger.LogInformation("Sending notification for alert {AlertId} to institution {InstitutionId}", 
+                alert.Id, institution.Id);
+
+            var results = new List<NotificationResult>();
+
+            // Send via all configured delivery methods
+            if (institution.NotificationSettings?.DeliveryMethods?.Contains(NotificationDeliveryMethod.Webhook) == true)
+            {
+                var webhookResult = await SendWebhookAsync(alert, institution);
+                results.Add(webhookResult);
+            }
+
+            if (institution.NotificationSettings?.DeliveryMethods?.Contains(NotificationDeliveryMethod.Email) == true)
+            {
+                var emailResult = await SendEmailAsync(alert, institution);
+                results.Add(emailResult);
+            }
+
+            return results;
+        }
+
+        public async Task<List<NotificationResult>> SendBulkNotificationAsync(List<PropertyAlert> alerts, Institution institution)
+        {
+            _logger.LogInformation("Sending bulk notification for {Count} alerts to institution {InstitutionId}", 
+                alerts.Count, institution.Id);
+
+            var results = new List<NotificationResult>();
+
+            // Send via all configured delivery methods
+            if (institution.NotificationSettings?.DeliveryMethods?.Contains(NotificationDeliveryMethod.Webhook) == true)
+            {
+                var webhookResult = await SendBulkWebhookAsync(alerts, institution);
+                results.Add(webhookResult);
+            }
+
+            if (institution.NotificationSettings?.DeliveryMethods?.Contains(NotificationDeliveryMethod.Email) == true)
+            {
+                var emailResult = await SendBulkEmailAsync(alerts, institution);
+                results.Add(emailResult);
+            }
+
+            if (institution.NotificationSettings?.DeliveryMethods?.Contains(NotificationDeliveryMethod.Csv) == true)
+            {
+                var csvResult = await SendCsvAsync(alerts, institution);
+                results.Add(csvResult);
+            }
+
+            return results;
+        }
+
+        public async Task<NotificationResult> SendEmailAsync(PropertyAlert alert, Institution institution)
+        {
+            _logger.LogInformation("Sending email for alert {AlertId} to institution {InstitutionId}", 
+                alert.Id, institution.Id);
+
+            // TODO: Implement email sending logic
+            await Task.Delay(150);
+
+            return new NotificationResult
+            {
+                IsSuccess = true,
+                StatusCode = 200,
+                ResponseBody = "Email sent successfully",
+                SentAt = DateTime.UtcNow,
+                ResponseTime = TimeSpan.FromMilliseconds(150),
+                AttemptNumber = 1
+            };
+        }
+
+        public async Task<NotificationResult> SendBulkEmailAsync(List<PropertyAlert> alerts, Institution institution)
+        {
+            _logger.LogInformation("Sending bulk email for {Count} alerts to institution {InstitutionId}", 
+                alerts.Count, institution.Id);
+
+            // TODO: Implement bulk email sending logic
+            await Task.Delay(300);
+
+            return new NotificationResult
+            {
+                IsSuccess = true,
+                StatusCode = 200,
+                ResponseBody = $"Bulk email sent for {alerts.Count} alerts",
+                SentAt = DateTime.UtcNow,
+                ResponseTime = TimeSpan.FromMilliseconds(300),
+                AttemptNumber = 1
+            };
+        }
+
+        public async Task<NotificationResult> SendCsvAsync(List<PropertyAlert> alerts, Institution institution)
+        {
+            _logger.LogInformation("Sending CSV for {Count} alerts to institution {InstitutionId}", 
+                alerts.Count, institution.Id);
+
+            // TODO: Implement CSV generation and delivery
+            await Task.Delay(200);
+
+            return new NotificationResult
+            {
+                IsSuccess = true,
+                StatusCode = 200,
+                ResponseBody = $"CSV generated and sent for {alerts.Count} alerts",
+                SentAt = DateTime.UtcNow,
+                ResponseTime = TimeSpan.FromMilliseconds(200),
+                AttemptNumber = 1
+            };
+        }
+
+        public async Task<NotificationResult> GenerateCsvReportAsync(List<PropertyAlert> alerts, Institution institution)
+        {
+            _logger.LogInformation("Generating CSV report for {Count} alerts for institution {InstitutionId}", 
+                alerts.Count, institution.Id);
+
+            // TODO: Implement CSV generation logic
+            await Task.Delay(100);
+
+            var csv = "Address,Status,Date,Member ID\n";
+            foreach (var alert in alerts)
+            {
+                csv += $"{alert.FullAddress},{alert.NewStatus},{alert.CreatedAt:yyyy-MM-dd},{alert.AnonymousMemberId}\n";
+            }
+
+            return new NotificationResult
+            {
+                IsSuccess = true,
+                StatusCode = 200,
+                ResponseBody = csv,
+                SentAt = DateTime.UtcNow,
+                ResponseTime = TimeSpan.FromMilliseconds(100),
+                AttemptNumber = 1,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["CsvLength"] = csv.Length,
+                    ["AlertCount"] = alerts.Count
+                }
+            };
+        }
+
+        public async Task<NotificationResult> RetryFailedNotificationAsync(string notificationId, Institution institution)
+        {
+            _logger.LogInformation("Retrying failed notification {NotificationId} for institution {InstitutionId}", 
+                notificationId, institution.Id);
+
+            // TODO: Implement notification retry logic
+            await Task.Delay(100);
+
+            return new NotificationResult
+            {
+                IsSuccess = true,
+                StatusCode = 200,
+                ResponseBody = "Notification retry successful",
+                SentAt = DateTime.UtcNow,
+                ResponseTime = TimeSpan.FromMilliseconds(100),
+                AttemptNumber = 2
+            };
+        }
     }
 
     // Stub implementation for SignalRService
