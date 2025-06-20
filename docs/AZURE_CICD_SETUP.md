@@ -97,16 +97,22 @@ az deployment group create \
 
 ### Common Issues:
 
-1. **"Login failed" error:**
+1. **"Login failed with Error: Using auth-type: SERVICE_PRINCIPAL. Not all values are present. Ensure 'client-id' and 'tenant-id' are supplied."**
+   - **Root Cause**: The `AZURE_CREDENTIALS` GitHub Secret has not been configured
+   - **Solution**: Follow Step 2 above to create and configure the GitHub Secret
+   - **Verification**: Check that the secret exists in GitHub → Settings → Secrets and variables → Actions
+   - **Format**: Ensure the secret contains valid JSON with all required fields
+
+2. **"Login failed" error (general):**
    - Verify AZURE_CREDENTIALS secret is properly formatted JSON
    - Ensure service principal has correct permissions
    - Check that subscription ID is correct
 
-2. **"Insufficient privileges" error:**
+3. **"Insufficient privileges" error:**
    - Add "User Access Administrator" role to service principal
    - Verify scope includes the target subscription
 
-3. **"Resource group not found" error:**
+4. **"Resource group not found" error:**
    - Ensure resource group exists or pipeline creates it
    - Check resource group name in parameters
 
