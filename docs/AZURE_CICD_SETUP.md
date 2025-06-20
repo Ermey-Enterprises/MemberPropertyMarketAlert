@@ -108,11 +108,27 @@ az deployment group create \
    - Ensure service principal has correct permissions
    - Check that subscription ID is correct
 
-3. **"Insufficient privileges" error:**
-   - Add "User Access Administrator" role to service principal
-   - Verify scope includes the target subscription
+3. **"Insufficient privileges to complete the operation" during service principal creation:**
+   - **Common when**: You don't have Owner/User Access Administrator role in the subscription
+   - **Solutions**:
+     - **Option A**: Ask your Azure administrator to create the service principal for you
+     - **Option B**: Use resource group scope instead of subscription scope:
+       ```bash
+       az ad sp create-for-rbac \
+         --name "MemberPropertyAlert-CI" \
+         --role "Contributor" \
+         --scopes "/subscriptions/<subscription-id>/resourceGroups/<resource-group-name>"
+       ```
+     - **Option C**: Use Azure DevOps Service Connections or GitHub OIDC (see Alternative Authentication Methods below)
 
-4. **"Resource group not found" error:**
+4. **"Failed to query Graph API" or permission errors:**
+   - **Root Cause**: Limited Graph API permissions
+   - **Solutions**:
+     - Try using `--assignee-object-id` instead of email
+     - Ask administrator to grant Graph API permissions
+     - Use alternative authentication methods
+
+5. **"Resource group not found" error:**
    - Ensure resource group exists or pipeline creates it
    - Check resource group name in parameters
 
@@ -133,6 +149,82 @@ az deployment group create \
    ```
 
 3. **Check GitHub Actions logs** for detailed error messages
+
+## Alternative Authentication Methods
+
+When you don't have sufficient permissions to create service principals, consider these alternatives:
+
+### Option 1: GitHub OIDC (Recommended for limited permissions)
+
+GitHub Actions can authenticate to Azure without storing secrets using OpenID Connect:
+
+1. **Create an Azure AD Application** (if you have permissions):
+   ```bash
+   az ad app create --display-name "MemberPropertyAlert-OIDC"
+   ```
+
+2. **Create federated credentials** for GitHub:
+   ```bash
+   az ad app federated-credential create \
+     --id <app-id> \
+     --parameters '{
+       "name": "github-main",
+       "issuer": "https://token.actions.githubusercontent.com",
+       "subject": "repo:your-username/MemberPropertyMarketAlert:ref:refs/heads/main",
+       "audiences": ["api://AzureADTokenExchange"]
+     }'
+   ```
+
+3. **Update GitHub Actions workflow** to use OIDC:
+   ```yaml
+   permissions:
+     id-token: write
+     contents: read
+   
+   steps:
+     - uses: azure/login@v1
+       with:
+         client-id: ${{ secrets.AZURE_CLIENT_ID }}
+         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+   ```
+
+### Option 2: Request Administrator Assistance
+
+If you don't have permissions, ask your Azure administrator to:
+
+1. **Create the service principal for you**:
+   ```bash
+   az ad sp create-for-rbac \
+     --name "MemberPropertyAlert-CI" \
+     --role "Contributor" \
+     --scopes "/subscriptions/<subscription-id>/resourceGroups/<resource-group-name>"
+   ```
+
+2. **Provide you with the output JSON** to configure GitHub secrets
+
+3. **Grant necessary permissions** for your specific resource group
+
+### Option 3: Use Azure DevOps
+
+If GitHub Actions permissions are too restrictive:
+
+1. **Set up Azure DevOps project**
+2. **Create service connection** using Azure Resource Manager
+3. **Use Azure Pipelines** instead of GitHub Actions
+
+### Option 4: Manual Deployment
+
+For development/testing without CI/CD:
+
+1. **Deploy using your personal Azure CLI session**:
+   ```bash
+   az login
+   az account set --subscription "<subscription-id>"
+   # Run deployment commands manually
+   ```
+
+2. **Use deployment scripts** with your authenticated session
 
 ## Security Best Practices
 
