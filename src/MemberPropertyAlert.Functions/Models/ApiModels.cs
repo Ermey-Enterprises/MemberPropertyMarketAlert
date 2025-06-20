@@ -179,6 +179,8 @@ namespace MemberPropertyAlert.Functions.Models
         public string? WebhookAuthHeader { get; set; }
         
         public WebhookRetryPolicy? RetryPolicy { get; set; }
+        
+        public NotificationSettings? NotificationSettings { get; set; }
     }
 
     public class UpdateInstitutionRequest
@@ -188,6 +190,7 @@ namespace MemberPropertyAlert.Functions.Models
         public string? WebhookUrl { get; set; }
         public string? WebhookAuthHeader { get; set; }
         public WebhookRetryPolicy? RetryPolicy { get; set; }
+        public NotificationSettings? NotificationSettings { get; set; }
         public bool? IsActive { get; set; }
     }
 
