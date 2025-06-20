@@ -48,7 +48,7 @@ const ScanControl = ({ connection }) => {
   const startManualScan = async () => {
     try {
       setIsScanning(true);
-      const response = await axios.post('/api/scan/start');
+      await axios.post('/api/scan/start');
       
       if (connection) {
         // Listen for scan completion
