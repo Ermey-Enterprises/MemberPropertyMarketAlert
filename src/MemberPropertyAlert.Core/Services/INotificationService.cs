@@ -4,11 +4,41 @@ namespace MemberPropertyAlert.Core.Services
 {
     public interface INotificationService
     {
+        // Webhook notifications
         Task<NotificationResult> SendWebhookAsync(PropertyAlert alert, Institution institution);
         Task<NotificationResult> SendBulkWebhookAsync(List<PropertyAlert> alerts, Institution institution);
         Task<NotificationResult> RetryFailedWebhookAsync(PropertyAlert alert, Institution institution);
-        Task<List<NotificationResult>> ProcessPendingAlertsAsync();
         Task<bool> ValidateWebhookEndpointAsync(string webhookUrl, string? authHeader = null);
+        
+        // Email notifications
+        Task<NotificationResult> SendEmailAsync(PropertyAlert alert, Institution institution);
+        Task<NotificationResult> SendBulkEmailAsync(List<PropertyAlert> alerts, Institution institution);
+        
+        // CSV notifications
+        Task<NotificationResult> SendCsvAsync(List<PropertyAlert> alerts, Institution institution);
+        Task<NotificationResult> GenerateCsvReportAsync(List<PropertyAlert> alerts, Institution institution);
+        
+        // Multi-method delivery
+        Task<List<NotificationResult>> SendNotificationAsync(PropertyAlert alert, Institution institution);
+        Task<List<NotificationResult>> SendBulkNotificationAsync(List<PropertyAlert> alerts, Institution institution);
+        
+        // Processing and management
+        Task<List<NotificationResult>> ProcessPendingAlertsAsync();
+        Task<NotificationResult> RetryFailedNotificationAsync(string notificationId, Institution institution);
+    }
+
+    public interface IEmailService
+    {
+        Task<NotificationResult> SendEmailAsync(EmailMessage message);
+        Task<NotificationResult> SendBulkEmailAsync(List<EmailMessage> messages);
+        Task<bool> ValidateEmailConfigurationAsync(EmailSettings settings);
+    }
+
+    public interface ICsvService
+    {
+        Task<string> GenerateCsvAsync(List<PropertyAlert> alerts, CsvSettings settings);
+        Task<NotificationResult> DeliverCsvAsync(string csvContent, string fileName, CsvSettings settings);
+        Task<byte[]> GenerateCsvBytesAsync(List<PropertyAlert> alerts, CsvSettings settings);
     }
 
     public interface ISignalRService
@@ -72,6 +102,25 @@ namespace MemberPropertyAlert.Core.Services
         public int BatchTimeoutMinutes { get; set; } = 5;
         public string DefaultUserAgent { get; set; } = "MemberPropertyAlert/1.0";
         public Dictionary<string, string> DefaultHeaders { get; set; } = new();
+    }
+
+    public class EmailMessage
+    {
+        public List<string> To { get; set; } = new();
+        public List<string> Cc { get; set; } = new();
+        public List<string> Bcc { get; set; } = new();
+        public string Subject { get; set; } = string.Empty;
+        public string Body { get; set; } = string.Empty;
+        public bool IsHtml { get; set; } = true;
+        public List<EmailAttachment> Attachments { get; set; } = new();
+        public Dictionary<string, string> CustomHeaders { get; set; } = new();
+    }
+
+    public class EmailAttachment
+    {
+        public string FileName { get; set; } = string.Empty;
+        public byte[] Content { get; set; } = Array.Empty<byte>();
+        public string ContentType { get; set; } = "application/octet-stream";
     }
 
     public class SignalRConfiguration

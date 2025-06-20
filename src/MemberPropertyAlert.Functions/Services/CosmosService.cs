@@ -313,8 +313,12 @@ namespace MemberPropertyAlert.Functions.Services
         public async Task<ScanLog> CreateScanLogAsync(ScanLog scanLog)
         {
             EnsureInitialized();
-            var partitionKey = scanLog.InstitutionId ?? "system";
-            var response = await _scanLogsContainer!.CreateItemAsync(scanLog, new PartitionKey(partitionKey));
+            // Ensure InstitutionId is set for partitioning - use "system" for global scans
+            if (string.IsNullOrEmpty(scanLog.InstitutionId))
+            {
+                scanLog.InstitutionId = "system";
+            }
+            var response = await _scanLogsContainer!.CreateItemAsync(scanLog, new PartitionKey(scanLog.InstitutionId));
             _logger.LogInformation("Scan log created: {ScanLogId}", scanLog.Id);
             return response.Resource;
         }
@@ -340,8 +344,12 @@ namespace MemberPropertyAlert.Functions.Services
         public async Task<ScanLog> UpdateScanLogAsync(ScanLog scanLog)
         {
             EnsureInitialized();
-            var partitionKey = scanLog.InstitutionId ?? "system";
-            var response = await _scanLogsContainer!.ReplaceItemAsync(scanLog, scanLog.Id, new PartitionKey(partitionKey));
+            // Ensure InstitutionId is set for partitioning - use "system" for global scans
+            if (string.IsNullOrEmpty(scanLog.InstitutionId))
+            {
+                scanLog.InstitutionId = "system";
+            }
+            var response = await _scanLogsContainer!.ReplaceItemAsync(scanLog, scanLog.Id, new PartitionKey(scanLog.InstitutionId));
             _logger.LogInformation("Scan log updated: {ScanLogId}", scanLog.Id);
             return response.Resource;
         }

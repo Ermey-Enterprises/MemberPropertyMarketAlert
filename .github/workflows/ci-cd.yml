@@ -19,8 +19,10 @@ on:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/MemberPropertyMarketAlert.Functions'
-  AZURE_WEBAPP_PACKAGE_PATH: './src/MemberPropertyMarketAlert.Web'
+  NODE_VERSION: '18.x'
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/MemberPropertyAlert.Functions'
+  AZURE_WEBAPP_PACKAGE_PATH: './src/MemberPropertyAlert.UI'
+  AZURE_MOCKWEBHOOK_PACKAGE_PATH: './src/MemberPropertyAlert.MockWebhookClient'
 
 jobs:
   # Build and Test Job
@@ -36,7 +38,22 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
         
-    - name: Restore dependencies
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: '${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/src/package-lock.json'
+        
+    - name: Install UI dependencies
+      working-directory: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/src
+      run: npm ci
+      
+    - name: Build UI
+      working-directory: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/src
+      run: npm run build
+        
+    - name: Restore .NET dependencies
       run: dotnet restore
       
     - name: Build solution
@@ -63,6 +80,12 @@ jobs:
       with:
         name: web-app
         path: '${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/bin/Release/net8.0'
+        
+    - name: Upload build artifacts - Mock Webhook Client
+      uses: actions/upload-artifact@v4
+      with:
+        name: mock-webhook-client
+        path: '${{ env.AZURE_MOCKWEBHOOK_PACKAGE_PATH }}/bin/Release/net8.0'
 
   # Infrastructure Deployment Job
   deploy-infrastructure:
@@ -186,7 +209,7 @@ jobs:
         app-name: ${{ steps.get-outputs.outputs.web-app-name }}
         package: './web-app'
 
-  # Integration Tests Job
+  # Integration Tests Job with Mock Services
   integration-tests:
     needs: deploy-applications
     runs-on: ubuntu-latest
@@ -205,6 +228,12 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Download Mock Webhook Client artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: mock-webhook-client
+        path: ./mock-webhook-client
         
     - name: Set Resource Group Name
       run: |
@@ -233,25 +262,61 @@ jobs:
         echo "function-app-url=$FUNCTION_APP_URL" >> $GITHUB_OUTPUT
         echo "web-app-url=$WEB_APP_URL" >> $GITHUB_OUTPUT
         
+    - name: Start Mock Webhook Client
+      run: |
+        cd mock-webhook-client
+        dotnet MemberPropertyAlert.MockWebhookClient.dll --urls "http://localhost:5000" &
+        echo $! > webhook_client.pid
+        sleep 10
+        
     - name: Wait for applications to be ready
       run: |
         echo "Waiting for applications to be ready..."
         sleep 60
         
-    - name: Run integration tests
+    - name: Run integration tests with mock services
       env:
         FUNCTION_APP_URL: ${{ steps.get-outputs.outputs.function-app-url }}
         WEB_APP_URL: ${{ steps.get-outputs.outputs.web-app-url }}
+        MOCK_WEBHOOK_URL: "http://localhost:5000"
         ENVIRONMENT: ${{ matrix.environment }}
       run: |
-        # Add integration test commands here
         echo "Running integration tests against:"
         echo "Function App: $FUNCTION_APP_URL"
         echo "Web App: $WEB_APP_URL"
+        echo "Mock Webhook Client: $MOCK_WEBHOOK_URL"
         
-        # Example health check
+        # Health checks
         curl -f "$FUNCTION_APP_URL/api/health" || exit 1
         curl -f "$WEB_APP_URL/health" || exit 1
+        curl -f "$MOCK_WEBHOOK_URL/health" || exit 1
+        
+        # Test mock webhook client functionality
+        echo "Testing mock webhook client..."
+        
+        # Send a test webhook
+        curl -X POST "$MOCK_WEBHOOK_URL/webhook" \
+          -H "Content-Type: application/json" \
+          -H "User-Agent: PropertyAlert-Test/1.0" \
+          -d '{"test": "webhook", "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "environment": "'$ENVIRONMENT'"}'
+        
+        # Verify webhook was received
+        sleep 2
+        WEBHOOK_COUNT=$(curl -s "$MOCK_WEBHOOK_URL/webhooks" | jq length)
+        if [ "$WEBHOOK_COUNT" -lt 1 ]; then
+          echo "ERROR: Mock webhook client did not receive test webhook"
+          exit 1
+        fi
+        
+        echo "✅ Mock webhook client is working correctly"
+        echo "✅ Integration tests completed successfully"
+        
+    - name: Stop Mock Webhook Client
+      if: always()
+      run: |
+        if [ -f mock-webhook-client/webhook_client.pid ]; then
+          kill $(cat mock-webhook-client/webhook_client.pid) || true
+        fi
         
     - name: Upload integration test results
       uses: actions/upload-artifact@v4

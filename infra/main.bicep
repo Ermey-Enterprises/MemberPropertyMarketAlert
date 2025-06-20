@@ -189,10 +189,10 @@ resource institutionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabas
 
 resource addressesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
   parent: cosmosDatabase
-  name: 'MemberAddresses'
+  name: 'Addresses'
   properties: {
     resource: {
-      id: 'MemberAddresses'
+      id: 'Addresses'
       partitionKey: {
         paths: ['/institutionId']
         kind: 'Hash'
@@ -217,10 +217,10 @@ resource addressesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/
 
 resource alertsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
   parent: cosmosDatabase
-  name: 'PropertyAlerts'
+  name: 'Alerts'
   properties: {
     resource: {
-      id: 'PropertyAlerts'
+      id: 'Alerts'
       partitionKey: {
         paths: ['/institutionId']
         kind: 'Hash'
@@ -250,7 +250,7 @@ resource scanLogsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
     resource: {
       id: 'ScanLogs'
       partitionKey: {
-        paths: ['/date']
+        paths: ['/institutionId']
         kind: 'Hash'
       }
       indexingPolicy: {
