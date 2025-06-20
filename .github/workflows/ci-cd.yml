@@ -81,20 +81,35 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Set Resource Group Name
+      run: |
+        echo "RESOURCE_GROUP_NAME=MemberPropertyMarketAlert-${{ matrix.environment }}-rg" >> $GITHUB_ENV
+      
     - name: Azure Login
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Create Resource Group
+      run: |
+        az group create \
+          --name ${{ env.RESOURCE_GROUP_NAME }} \
+          --location "East US" \
+          --tags \
+            Environment=${{ matrix.environment }} \
+            Project=MemberPropertyMarketAlert \
+            ManagedBy=GitHub-Actions
         
     - name: Deploy Infrastructure
       uses: azure/arm-deploy@v1
       id: deploy-infra
       with:
         subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        resourceGroupName: 'MemberPropertyMarketAlert-rg'
+        resourceGroupName: ${{ env.RESOURCE_GROUP_NAME }}
         template: './infra/main.bicep'
         parameters: './infra/main.${{ matrix.environment }}.parameters.json'
         deploymentName: 'memberpropertyalert-${{ github.run_number }}'
+        scope: 'resourcegroup'
         
     - name: Output deployment results
       run: |
@@ -132,6 +147,10 @@ jobs:
         name: web-app
         path: ./web-app
         
+    - name: Set Resource Group Name
+      run: |
+        echo "RESOURCE_GROUP_NAME=MemberPropertyMarketAlert-${{ matrix.environment }}-rg" >> $GITHUB_ENV
+        
     - name: Azure Login
       uses: azure/login@v1
       with:
@@ -141,13 +160,13 @@ jobs:
       id: get-outputs
       run: |
         FUNCTION_APP_NAME=$(az deployment group show \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --name memberpropertyalert-${{ github.run_number }} \
           --query "properties.outputs.functionAppName.value" \
           --output tsv)
         
         WEB_APP_NAME=$(az deployment group show \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --name memberpropertyalert-${{ github.run_number }} \
           --query "properties.outputs.webAppName.value" \
           --output tsv)
@@ -187,6 +206,10 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
         
+    - name: Set Resource Group Name
+      run: |
+        echo "RESOURCE_GROUP_NAME=MemberPropertyMarketAlert-${{ matrix.environment }}-rg" >> $GITHUB_ENV
+        
     - name: Azure Login
       uses: azure/login@v1
       with:
@@ -196,13 +219,13 @@ jobs:
       id: get-outputs
       run: |
         FUNCTION_APP_URL=$(az deployment group show \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --name memberpropertyalert-${{ github.run_number }} \
           --query "properties.outputs.functionAppUrl.value" \
           --output tsv)
         
         WEB_APP_URL=$(az deployment group show \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --name memberpropertyalert-${{ github.run_number }} \
           --query "properties.outputs.webAppUrl.value" \
           --output tsv)

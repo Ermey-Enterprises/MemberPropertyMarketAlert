@@ -36,11 +36,15 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
         
+    - name: Set Resource Group Name
+      run: |
+        echo "RESOURCE_GROUP_NAME=MemberPropertyMarketAlert-${{ github.event.inputs.environment }}-rg" >> $GITHUB_ENV
+
     - name: Create Resource Group
       if: github.event.inputs.action == 'deploy'
       run: |
         az group create \
-          --name MemberPropertyMarketAlert-rg \
+          --name ${{ env.RESOURCE_GROUP_NAME }} \
           --location "East US" \
           --tags \
             Environment=${{ github.event.inputs.environment }} \
@@ -51,7 +55,7 @@ jobs:
       if: github.event.inputs.action != 'destroy'
       run: |
         az deployment group validate \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --template-file ./infra/main.bicep \
           --parameters ./infra/main.${{ github.event.inputs.environment }}.parameters.json
           
@@ -59,7 +63,7 @@ jobs:
       if: github.event.inputs.action == 'what-if'
       run: |
         az deployment group what-if \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --template-file ./infra/main.bicep \
           --parameters ./infra/main.${{ github.event.inputs.environment }}.parameters.json \
           --name memberpropertyalert-whatif-${{ github.run_number }}
@@ -69,7 +73,7 @@ jobs:
       id: deploy
       run: |
         az deployment group create \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --template-file ./infra/main.bicep \
           --parameters ./infra/main.${{ github.event.inputs.environment }}.parameters.json \
           --name memberpropertyalert-${{ github.run_number }}
@@ -80,25 +84,25 @@ jobs:
         echo "## Deployment Outputs" >> $GITHUB_STEP_SUMMARY
         
         FUNCTION_APP_NAME=$(az deployment group show \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --name memberpropertyalert-${{ github.run_number }} \
           --query "properties.outputs.functionAppName.value" \
           --output tsv)
         
         WEB_APP_NAME=$(az deployment group show \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --name memberpropertyalert-${{ github.run_number }} \
           --query "properties.outputs.webAppName.value" \
           --output tsv)
         
         FUNCTION_APP_URL=$(az deployment group show \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --name memberpropertyalert-${{ github.run_number }} \
           --query "properties.outputs.functionAppUrl.value" \
           --output tsv)
         
         WEB_APP_URL=$(az deployment group show \
-          --resource-group MemberPropertyMarketAlert-rg \
+          --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
           --name memberpropertyalert-${{ github.run_number }} \
           --query "properties.outputs.webAppUrl.value" \
           --output tsv)
@@ -106,13 +110,14 @@ jobs:
         echo "- **Function App**: [$FUNCTION_APP_NAME]($FUNCTION_APP_URL)" >> $GITHUB_STEP_SUMMARY
         echo "- **Web App**: [$WEB_APP_NAME]($WEB_APP_URL)" >> $GITHUB_STEP_SUMMARY
         echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Resource Group**: ${{ env.RESOURCE_GROUP_NAME }}" >> $GITHUB_STEP_SUMMARY
         
     - name: Destroy Infrastructure
       if: github.event.inputs.action == 'destroy'
       run: |
         echo "⚠️ Destroying infrastructure for environment: ${{ github.event.inputs.environment }}"
         az group delete \
-          --name MemberPropertyMarketAlert-rg \
+          --name ${{ env.RESOURCE_GROUP_NAME }} \
           --yes \
           --no-wait
         echo "Resource group deletion initiated. This may take several minutes to complete."
