@@ -17,8 +17,8 @@ env:
   AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
   AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-  AZURE_RESOURCE_GROUP: 'memberpropertyalert-eastus2-rg'
-  AZURE_LOCATION: 'eastus2'
+  AZURE_RESOURCE_GROUP: 'rg-member-property-alert-dev'
+  AZURE_LOCATION: 'eastus'
 
 jobs:
   test-and-build:
@@ -160,11 +160,10 @@ jobs:
           RG="${{ env.AZURE_RESOURCE_GROUP }}"
           LOC="${{ env.AZURE_LOCATION }}"
           echo "Deploying infrastructure..."
-          az group create --name "$RG" --location "$LOC"
-          DEPLOY_JSON=$(az deployment group create \
+          az group create --name "$RG" --location "$LOC"          DEPLOY_JSON=$(az deployment group create \
             --resource-group "$RG" \
             --template-file infra/main.bicep \
-            --parameters @infra/main.prod.parameters.json \
+            --parameters @infra/main.dev.parameters.json \
             --parameters location="$LOC" \
             --output json)
           FUNCTION_APP_NAME=$(jq -r '.properties.outputs.functionAppName.value' <<<"$DEPLOY_JSON")
@@ -187,11 +186,10 @@ jobs:
           if [ -z "$FUNCTION_APP_NAME" ] || [ "$FUNCTION_APP_NAME" = "null" ] || [ -z "$STATIC_WEB_APP_NAME" ] || [ "$STATIC_WEB_APP_NAME" = "null" ]; then
             echo "ERROR: Missing resources in resource group $RG"
             echo "RETRY: Forcing infrastructure deployment..."
-            az group create --name "$RG" --location "${{ env.AZURE_LOCATION }}"
-            DEPLOY_JSON=$(az deployment group create \
+            az group create --name "$RG" --location "${{ env.AZURE_LOCATION }}"            DEPLOY_JSON=$(az deployment group create \
               --resource-group "$RG" \
               --template-file infra/main.bicep \
-              --parameters @infra/main.prod.parameters.json \
+              --parameters @infra/main.dev.parameters.json \
               --parameters location="${{ env.AZURE_LOCATION }}" \
               --output json)
             FUNCTION_APP_NAME=$(jq -r '.properties.outputs.functionAppName.value' <<<"$DEPLOY_JSON")

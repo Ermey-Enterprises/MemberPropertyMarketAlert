@@ -356,3 +356,23 @@ local.settings.json
 # Application settings
 appsettings.Development.json
 appsettings.Local.json
+
+# Deployment artifacts and temporary files
+deploy.zip
+*.zip
+setup-*.ps1
+setup-*.sh
+admin-setup-*.ps1
+deploy-fixed.*
+deploy-enhanced.*
+
+# Infrastructure and deployment scripts (CI/CD only)
+scripts/
+Deploy-*.ps1
+Create-*.ps1
+*-Infrastructure.*
+*-Cosmos*.*
+
+# Temporary authentication files
+auth-values.json
+.azure/
