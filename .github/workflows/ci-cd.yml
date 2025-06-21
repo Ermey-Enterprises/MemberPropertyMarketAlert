@@ -159,7 +159,7 @@ jobs:
         run: |
           RG="${{ env.AZURE_RESOURCE_GROUP }}"
           LOC="${{ env.AZURE_LOCATION }}"
-          echo "🏗️ Deploying infrastructure..."
+          echo "Deploying infrastructure..."
           az group create --name "$RG" --location "$LOC"
           DEPLOY_JSON=$(az deployment group create \
             --resource-group "$RG" \
@@ -171,7 +171,7 @@ jobs:
           STATIC_WEB_APP_NAME=$(jq -r '.properties.outputs.staticWebAppName.value' <<<"$DEPLOY_JSON")
           echo "functionAppName=$FUNCTION_APP_NAME" >> "$GITHUB_OUTPUT"
           echo "staticWebAppName=$STATIC_WEB_APP_NAME" >> "$GITHUB_OUTPUT"
-          echo "✅ Infrastructure deployment completed: Functions=$FUNCTION_APP_NAME, StaticWeb=$STATIC_WEB_APP_NAME"
+          echo "Infrastructure deployment completed: Functions=$FUNCTION_APP_NAME, StaticWeb=$STATIC_WEB_APP_NAME"
       
       - name: Get existing resource names
         id: get-existing
@@ -179,7 +179,7 @@ jobs:
         shell: bash
         run: |
           RG="${{ env.AZURE_RESOURCE_GROUP }}"
-          echo "🔍 Looking for existing resources in resource group: $RG"
+          echo "Looking for existing resources in resource group: $RG"
           
           FUNCTION_APP_NAME=$(az functionapp list --resource-group "$RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
           STATIC_WEB_APP_NAME=$(az staticwebapp list --resource-group "$RG" --query "[0].name" -o tsv 2>/dev/null || echo "")

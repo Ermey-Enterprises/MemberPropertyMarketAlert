@@ -349,7 +349,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'CosmosDb__ConnectionString'
-          value: cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString
+          value: 'AccountEndpoint=https://${cosmosAccount.name}.documents.azure.com:443/;AccountKey=${cosmosAccount.listKeys().primaryMasterKey};'
         }
         {
           name: 'CosmosDb__DatabaseName'
