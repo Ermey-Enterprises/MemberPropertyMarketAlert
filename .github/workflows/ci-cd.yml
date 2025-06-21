@@ -131,32 +131,67 @@ jobs:
           echo "🏗️ Creating/updating resource group..."
           az group create --name ${{ env.AZURE_RESOURCE_GROUP }} --location ${{ env.AZURE_LOCATION }}
           
-          echo "🚀 Deploying Bicep template..."
-          az deployment group create \
+          echo "🚀 Deploying Bicep template..."          az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --template-file infra/main.bicep \
             --parameters @infra/main.dev.parameters.json \
             --parameters location=${{ env.AZURE_LOCATION }} \
             --verbose
       
-      - name: Get Resource Names
+      - name: Get Resource Names and IDs
         id: resources
         run: |
           FUNCTION_APP=$(az functionapp list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "[0].name" -o tsv)
           STATIC_WEB_APP=$(az staticwebapp list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "[0].name" -o tsv)
+          COSMOS_ACCOUNT=$(az cosmosdb list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "[0].name" -o tsv)
+          STORAGE_ACCOUNT=$(az storage account list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "[0].name" -o tsv)
+          
+          # Get Function App Principal ID for RBAC
+          FUNCTION_PRINCIPAL_ID=$(az functionapp identity show --name $FUNCTION_APP --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "principalId" -o tsv)
           
           echo "functionAppName=$FUNCTION_APP" >> $GITHUB_OUTPUT
           echo "staticWebAppName=$STATIC_WEB_APP" >> $GITHUB_OUTPUT
+          echo "cosmosAccountName=$COSMOS_ACCOUNT" >> $GITHUB_OUTPUT
+          echo "storageAccountName=$STORAGE_ACCOUNT" >> $GITHUB_OUTPUT
+          echo "functionPrincipalId=$FUNCTION_PRINCIPAL_ID" >> $GITHUB_OUTPUT
           
           echo "✅ Found Function App: $FUNCTION_APP"
           echo "✅ Found Static Web App: $STATIC_WEB_APP"
+          echo "✅ Found Cosmos Account: $COSMOS_ACCOUNT"
+          echo "✅ Found Storage Account: $STORAGE_ACCOUNT"
+          echo "✅ Function Principal ID: $FUNCTION_PRINCIPAL_ID"
       
-      - name: Configure Azure Resources (Placeholder)
+      - name: Configure RBAC and Permissions
         run: |
-          echo "⚙️ Placeholder for resource configuration"
-          echo "TODO: Configure CORS, connection strings, app settings"
-          # az functionapp cors add --name ${{ steps.resources.outputs.functionAppName }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --allowed-origins "*"
-          # az functionapp config appsettings set --name ${{ steps.resources.outputs.functionAppName }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --settings @appsettings.json
+          echo "🔐 Configuring RBAC and permissions..."
+          
+          # Wait for identity propagation (important!)
+          echo "⏳ Waiting for managed identity to propagate..."
+          sleep 30
+          
+          # Deploy RBAC configuration using separate Bicep template
+          az deployment group create \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --template-file infra/rbac.bicep \
+            --parameters environment=dev \
+            --parameters functionAppPrincipalId=${{ steps.resources.outputs.functionPrincipalId }} \
+            --parameters cosmosAccountName=${{ steps.resources.outputs.cosmosAccountName }} \
+            --parameters storageAccountName=${{ steps.resources.outputs.storageAccountName }} \
+            --verbose
+            echo "✅ RBAC configuration completed"
+      
+      - name: Configure Azure Resources
+        run: |
+          echo "⚙️ Configuring Azure resources..."
+          
+          # Configure CORS for Function App
+          az functionapp cors add \
+            --name ${{ steps.resources.outputs.functionAppName }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --allowed-origins "https://${{ steps.resources.outputs.staticWebAppName }}.azurestaticapps.net" \
+            || echo "⚠️ CORS configuration failed - may already be configured"
+          
+          echo "✅ Resource configuration completed"
       
       - name: Download Functions artifact
         uses: actions/download-artifact@v4

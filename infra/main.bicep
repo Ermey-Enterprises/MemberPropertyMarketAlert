@@ -399,8 +399,8 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   }
 }
 
-// Note: Role assignment for Cosmos DB access will be handled post-deployment
-// to avoid "content already consumed" errors during initial deployment
+// Note: Role assignments for Cosmos DB and Storage access are handled 
+// in a separate rbac.bicep deployment to avoid timing and propagation issues
 
 // Outputs
 output functionAppName string = functionApp.name

@@ -22,10 +22,12 @@ The Bicep templates deploy a complete Azure infrastructure including:
 
 ```
 infra/
-├── main.bicep                    # Main Bicep template
+├── main.bicep                    # Main Bicep template (infrastructure resources)
+├── rbac.bicep                    # RBAC and role assignments (deployed separately)
 ├── main.dev.parameters.json     # Development environment parameters
 ├── main.test.parameters.json    # Test environment parameters
 ├── main.prod.parameters.json    # Production environment parameters
+├── rbac.dev.parameters.json     # RBAC parameters for development
 └── README.md                    # This file
 ```
 
@@ -57,11 +59,30 @@ az group create \
 
 # Deploy infrastructure
 az deployment group create \
-  --resource-group "MemberPropertyMarketAlert-dev-rg" \
+  --resource-group "rg-member-property-alert-dev" \
   --template-file "./infra/main.bicep" \
   --parameters "./infra/main.dev.parameters.json" \
   --parameters rentCastApiKey="<your-rentcast-api-key>" \
   --parameters adminApiKey="<your-admin-api-key>"
+
+# Wait for identity propagation (important!)
+echo "Waiting for managed identity propagation..."
+sleep 30
+
+# Get Function App Principal ID
+FUNCTION_PRINCIPAL_ID=$(az functionapp identity show \
+  --name "func-member-property-alert-dev" \
+  --resource-group "rg-member-property-alert-dev" \
+  --query "principalId" -o tsv)
+
+# Deploy RBAC configuration
+az deployment group create \
+  --resource-group "rg-member-property-alert-dev" \
+  --template-file "./infra/rbac.bicep" \
+  --parameters environment="dev" \
+  --parameters functionAppPrincipalId="$FUNCTION_PRINCIPAL_ID" \
+  --parameters cosmosAccountName="cosmos-member-property-alert-dev" \
+  --parameters storageAccountName="stmemberpropertyalertdev123456"
 ```
 
 ### Option 3: PowerShell
@@ -152,6 +173,21 @@ The Bicep template automatically configures:
 - **Key Vault Integration**: Ready for secret management
 - **RBAC**: Role-based access control enabled
 
+### RBAC and Permissions
+
+**Separate RBAC Deployment**: Role assignments are handled in a separate deployment step to avoid timing and propagation issues:
+
+1. **Main Infrastructure**: `main.bicep` deploys all Azure resources with system-assigned managed identities
+2. **RBAC Configuration**: `rbac.bicep` assigns roles after a propagation delay (30 seconds)
+3. **Required Roles**:
+   - **Cosmos DB Data Contributor**: Function App → Cosmos DB access
+   - **Storage Blob Data Contributor**: Function App → Storage access
+
+**Why Separate Deployments?**
+- Avoids "content already consumed" errors
+- Ensures managed identity propagation before role assignment
+- Prevents RBAC timing conflicts in Bicep deployments
+
 ## 📊 Monitoring and Logging
 
 ### Application Insights
@@ -202,13 +238,27 @@ After successful deployment, the template outputs:
 #### 1. Deployment Fails with "Resource Already Exists"
 ```bash
 # Delete existing resource group
-az group delete --name "MemberPropertyMarketAlert-dev-rg" --yes
+az group delete --name "rg-member-property-alert-dev" --yes
 
 # Redeploy
-az deployment group create --resource-group "MemberPropertyMarketAlert-dev-rg" ...
+az deployment group create --resource-group "rg-member-property-alert-dev" ...
 ```
 
-#### 2. Cosmos DB Free Tier Limit Exceeded
+#### 2. RBAC/Role Assignment Failures
+```bash
+# Check if managed identity exists and has propagated
+az functionapp identity show --name "func-member-property-alert-dev" --resource-group "rg-member-property-alert-dev"
+
+# Wait 30-60 seconds for propagation, then retry RBAC deployment
+az deployment group create --resource-group "rg-member-property-alert-dev" --template-file "./infra/rbac.bicep" ...
+```
+
+#### 3. "Content Already Consumed" Errors
+- **Solution**: Use separate RBAC deployment (already implemented)
+- **Cause**: Attempting role assignments in same deployment as resource creation
+- **Fix**: The `rbac.bicep` file handles this separation automatically
+
+#### 4. Cosmos DB Free Tier Limit Exceeded
 - Only one free tier Cosmos DB account per subscription
 - Use paid tier for additional environments
 - Consider using different subscriptions for dev/test/prod
