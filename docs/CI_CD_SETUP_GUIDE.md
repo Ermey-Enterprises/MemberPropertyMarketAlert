@@ -11,8 +11,18 @@ This project uses **CI/CD-driven infrastructure** exclusively:
 ✅ **Consistent deployments** - Same process for all environments
 ✅ **Automated testing** - Build and test before deployment
 ✅ **Rollback capability** - Easy to revert to previous versions
+✅ **Single workflow trigger** - Only one CI/CD pipeline runs per push
 
 **Previous manual PowerShell scripts have been removed** to prevent configuration drift and ensure all deployments go through the proper CI/CD pipeline.
+
+## 📋 **Current Workflow Files**
+
+The project uses a clean, minimal set of GitHub Actions workflows:
+
+- **`.github/workflows/ci-cd.yml`** - Main CI/CD pipeline (triggers on push to main)
+- **`.github/workflows/infrastructure.yml`** - Manual infrastructure operations (workflow_dispatch only)
+
+**Removed redundant workflows** that were causing multiple triggers and deployment conflicts.
 
 ## 🎯 **Prerequisites**
 
@@ -143,7 +153,41 @@ The CI/CD will attempt to deploy infrastructure first, which will create the Sta
 
 ---
 
-## 🔍 **Troubleshooting**
+## 🛠️ **Troubleshooting**
+
+### **Multiple GitHub Actions Running on Push**
+
+**Problem**: Multiple workflow runs triggered on a single push to main branch.
+
+**Root Cause**: Multiple workflow files with `on: push` triggers.
+
+**Solution**: ✅ **RESOLVED** - Removed redundant workflow files:
+- Deleted `ci-cd-old.yml` (was triggering on both master and main)
+- Deleted `deploy-automated.yml` (empty file)
+
+**Current State**: 
+- Only `ci-cd.yml` triggers on push to main
+- `infrastructure.yml` is manual-only (workflow_dispatch)
+
+### **"Content for this response was already consumed" Error**
+
+**Problem**: Azure CLI commands failing with response stream errors.
+
+**Root Cause**: Complex conditional logic and shell syntax errors in workflows.
+
+**Solution**: ✅ **RESOLVED** - Simplified workflow:
+- Removed complex conditionals and dependency logic
+- Fixed all shell/YAML syntax errors
+- Linear build → deploy → test flow
+
+### **Resource Group or Parameter File Errors**
+
+**Problem**: Bicep deployment fails with "resource group not found" or parameter errors.
+
+**Solution**:
+- Verify resource group exists: `rg-member-property-alert-dev`
+- Check parameter file: `infra/main.dev.parameters.json`
+- Ensure all required parameters are provided
 
 ### **Common Issues**
 
