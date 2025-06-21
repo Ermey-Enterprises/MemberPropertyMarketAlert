@@ -320,14 +320,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       }
       appSettings: [
         {
-          name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
           name: 'WEBSITE_CONTENTSHARE'
           value: toLower(functionAppName)
         }
@@ -348,8 +340,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: appInsights.properties.ConnectionString
         }
         {
-          name: 'CosmosDb__ConnectionString'
-          value: 'AccountEndpoint=https://${cosmosAccount.name}.documents.azure.com:443/;AccountKey=${cosmosAccount.listKeys().primaryMasterKey};'
+          name: 'CosmosDb__AccountName'
+          value: cosmosAccount.name
         }
         {
           name: 'CosmosDb__DatabaseName'
@@ -432,6 +424,17 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     redundancyMode: 'None'
     storageAccountRequired: false
+  }
+}
+
+// Role Assignments for Managed Identity
+resource cosmosDbContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(cosmosAccount.id, functionApp.id, 'CosmosDBContributor')
+  scope: cosmosAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c') // Cosmos DB Contributor
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 

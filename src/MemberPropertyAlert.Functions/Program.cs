@@ -63,10 +63,9 @@ var host = new HostBuilder()
         // Azure Services
         services.AddSingleton<CosmosClient>(provider =>
         {
-            var cosmosConnectionString = configuration.GetConnectionString("CosmosDB") ??
-                                       configuration["CosmosDB__ConnectionString"];
-
-            if (string.IsNullOrEmpty(cosmosConnectionString))
+            var cosmosAccountName = configuration["CosmosDb__AccountName"];
+            
+            if (string.IsNullOrEmpty(cosmosAccountName))
             {
                 // Return a mock client for development
                 return new CosmosClient("AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==");
@@ -79,7 +78,10 @@ var host = new HostBuilder()
                 MaxRetryAttemptsOnRateLimitedRequests = 3,
                 MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(30)
             };
-            return new CosmosClient(cosmosConnectionString, options);
+
+            // Use managed identity for authentication in Azure
+            var accountEndpoint = $"https://{cosmosAccountName}.documents.azure.com:443/";
+            return new CosmosClient(accountEndpoint, new DefaultAzureCredential(), options);
         });
 
         services.AddSingleton<ServiceBusClient>(provider =>
