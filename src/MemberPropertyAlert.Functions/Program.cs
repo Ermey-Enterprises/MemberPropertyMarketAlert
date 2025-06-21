@@ -64,7 +64,7 @@ var host = new HostBuilder()
         services.AddSingleton<CosmosClient>(provider =>
         {
             var cosmosAccountName = configuration["CosmosDb__AccountName"];
-            
+
             if (string.IsNullOrEmpty(cosmosAccountName))
             {
                 // Return a mock client for development
