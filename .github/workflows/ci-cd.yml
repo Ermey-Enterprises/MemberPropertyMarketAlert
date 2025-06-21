@@ -179,14 +179,14 @@ jobs:
         run: |
           RG="${{ env.AZURE_RESOURCE_GROUP }}"
           echo "Looking for existing resources in resource group: $RG"
-          
-          FUNCTION_APP_NAME=$(az functionapp list --resource-group "$RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
+            FUNCTION_APP_NAME=$(az functionapp list --resource-group "$RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
           STATIC_WEB_APP_NAME=$(az staticwebapp list --resource-group "$RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
           
           if [ -z "$FUNCTION_APP_NAME" ] || [ "$FUNCTION_APP_NAME" = "null" ] || [ -z "$STATIC_WEB_APP_NAME" ] || [ "$STATIC_WEB_APP_NAME" = "null" ]; then
             echo "ERROR: Missing resources in resource group $RG"
             echo "RETRY: Forcing infrastructure deployment..."
-            az group create --name "$RG" --location "${{ env.AZURE_LOCATION }}"            DEPLOY_JSON=$(az deployment group create \
+            az group create --name "$RG" --location "${{ env.AZURE_LOCATION }}"
+            DEPLOY_JSON=$(az deployment group create \
               --resource-group "$RG" \
               --template-file infra/main.bicep \
               --parameters @infra/main.dev.parameters.json \
