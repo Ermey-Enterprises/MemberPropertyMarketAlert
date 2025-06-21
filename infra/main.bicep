@@ -18,7 +18,7 @@ param adminApiKey string = ''
 // Variables
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
 var functionAppName = 'func-${appName}-${environment}'
-var webAppName = 'web-${appName}-${environment}'
+var staticWebAppName = 'swa-${appName}-${environment}'
 var storageAccountName = 'st${replace(appName, '-', '')}${environment}${uniqueSuffix}'
 var cosmosAccountName = 'cosmos-${appName}-${environment}'
 var appInsightsName = 'ai-${appName}-${environment}'
@@ -314,7 +314,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       cors: {
         allowedOrigins: [
           'https://portal.azure.com'
-          'https://${webAppName}.azurewebsites.net'
+          'https://${staticWebAppName}.azurestaticapps.net'
         ]
         supportCredentials: false
       }
@@ -375,74 +375,38 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
-// Web App for Admin UI
-resource webApp 'Microsoft.Web/sites@2023-12-01' = {
-  name: webAppName
-  location: location
+// Static Web App for Admin UI
+resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
+  name: staticWebAppName
+  location: 'Central US' // Static Web Apps have limited region support
   tags: commonTags
-  kind: 'app,linux'
+  sku: {
+    name: 'Free'
+    tier: 'Free'
+  }
   properties: {
-    serverFarmId: appServicePlan.id
-    reserved: true
-    isXenon: false
-    hyperV: false
-    vnetRouteAllEnabled: false
-    vnetImagePullEnabled: false
-    vnetContentShareEnabled: false
-    siteConfig: {
-      numberOfWorkers: 1
-      linuxFxVersion: 'NODE|18-lts'
-      acrUseManagedIdentityCreds: false
-      alwaysOn: environment == 'prod'
-      http20Enabled: false
-      use32BitWorkerProcess: false
-      ftpsState: 'FtpsOnly'
-      healthCheckPath: '/health'
-      appSettings: [
-        {
-          name: 'REACT_APP_API_BASE_URL'
-          value: 'https://${functionApp.properties.defaultHostName}/api'
-        }
-        {
-          name: 'REACT_APP_ENVIRONMENT'
-          value: environment
-        }
-        {
-          name: 'WEBSITE_NODE_DEFAULT_VERSION'
-          value: '18-lts'
-        }
-        {
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: 'true'
-        }
-        {
-          name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '1'
-        }
-      ]
+    repositoryUrl: 'https://github.com/Ermey-Enterprises/MemberPropertyMarketAlert'
+    branch: 'main'
+    buildProperties: {
+      appLocation: 'src/MemberPropertyAlert.UI'
+      apiLocation: ''
+      outputLocation: 'build'
     }
-    httpsOnly: true
-    redundancyMode: 'None'
-    storageAccountRequired: false
+    stagingEnvironmentPolicy: 'Enabled'
+    allowConfigFileUpdates: true
+    provider: 'GitHub'
+    enterpriseGradeCdnStatus: 'Disabled'
   }
 }
 
-// Role Assignments for Managed Identity
-resource cosmosDbContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(cosmosAccount.id, functionApp.id, 'CosmosDBContributor')
-  scope: cosmosAccount
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c') // Cosmos DB Contributor
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
+// Note: Role assignment for Cosmos DB access will be handled post-deployment
+// to avoid "content already consumed" errors during initial deployment
 
 // Outputs
 output functionAppName string = functionApp.name
 output functionAppUrl string = 'https://${functionApp.properties.defaultHostName}'
-output webAppName string = webApp.name
-output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
+output staticWebAppName string = staticWebApp.name
+output staticWebAppUrl string = 'https://${staticWebApp.properties.defaultHostname}'
 output cosmosAccountName string = cosmosAccount.name
 output storageAccountName string = storageAccount.name
 output appInsightsName string = appInsights.name
