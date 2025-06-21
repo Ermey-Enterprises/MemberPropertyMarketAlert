@@ -185,8 +185,8 @@ jobs:
           STATIC_WEB_APP_NAME=$(az staticwebapp list --resource-group "$RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
           
           if [ -z "$FUNCTION_APP_NAME" ] || [ "$FUNCTION_APP_NAME" = "null" ] || [ -z "$STATIC_WEB_APP_NAME" ] || [ "$STATIC_WEB_APP_NAME" = "null" ]; then
-            echo "❌ Missing resources in resource group $RG"
-            echo "🔄 Forcing infrastructure deployment..."
+            echo "ERROR: Missing resources in resource group $RG"
+            echo "RETRY: Forcing infrastructure deployment..."
             az group create --name "$RG" --location "${{ env.AZURE_LOCATION }}"
             DEPLOY_JSON=$(az deployment group create \
               --resource-group "$RG" \
@@ -196,12 +196,12 @@ jobs:
               --output json)
             FUNCTION_APP_NAME=$(jq -r '.properties.outputs.functionAppName.value' <<<"$DEPLOY_JSON")
             STATIC_WEB_APP_NAME=$(jq -r '.properties.outputs.staticWebAppName.value' <<<"$DEPLOY_JSON")
-            echo "✅ Infrastructure deployed due to missing resources"
+            echo "SUCCESS: Infrastructure deployed due to missing resources"
           fi
           
           echo "functionAppName=$FUNCTION_APP_NAME" >> "$GITHUB_OUTPUT"
           echo "staticWebAppName=$STATIC_WEB_APP_NAME" >> "$GITHUB_OUTPUT"
-          echo "✅ Resources found/created: Functions=$FUNCTION_APP_NAME, StaticWeb=$STATIC_WEB_APP_NAME"
+          echo "SUCCESS: Resources found/created: Functions=$FUNCTION_APP_NAME, StaticWeb=$STATIC_WEB_APP_NAME"
       
       - name: Determine resource names
         id: get-app-name
@@ -216,8 +216,8 @@ jobs:
           fi
           echo "functionAppName=$FUNCTION_APP_NAME" >> "$GITHUB_OUTPUT"
           echo "staticWebAppName=$STATIC_WEB_APP_NAME" >> "$GITHUB_OUTPUT"
-          echo "📱 Using Function App: $FUNCTION_APP_NAME"
-          echo "🌐 Using Static Web App: $STATIC_WEB_APP_NAME"
+          echo "APP: Using Function App: $FUNCTION_APP_NAME"
+          echo "WEB: Using Static Web App: $STATIC_WEB_APP_NAME"
       
       - name: Download Functions artifact
         uses: actions/download-artifact@v4
@@ -249,14 +249,14 @@ jobs:
       - name: Configure application settings
         shell: bash
         run: |
-          echo "✅ Applications configured via Bicep infrastructure - no additional settings needed"
+          echo "SUCCESS: Applications configured via Bicep infrastructure - no additional settings needed"
       
       - name: Set final status
         id: final-status
         shell: bash
         run: |
           echo "success=true" >> "$GITHUB_OUTPUT"
-          echo "🎉 Deployment and configuration completed successfully"
+          echo "COMPLETE: Deployment and configuration completed successfully"
 
   test-and-notify:
     runs-on: ubuntu-latest
@@ -280,7 +280,7 @@ jobs:
           cd webhook-client
           dotnet MemberPropertyAlert.MockWebhookClient.dll --urls "http://localhost:5000" &
           echo $! > webhook_client.pid
-          echo "🚀 Mock Webhook Client started on port 5000"
+          echo "STARTED: Mock Webhook Client started on port 5000"
           sleep 10
       
       - name: Optimized health check (no unnecessary sleep)
@@ -291,7 +291,7 @@ jobs:
           FUNCTION_URL="https://$FUNCTION_APP_NAME.azurewebsites.net"
           STATIC_URL="https://$STATIC_WEB_APP_NAME.azurestaticapps.net"
           
-          echo "🔍 Testing applications:"
+          echo "TESTING: Testing applications:"
           echo "   Functions: $FUNCTION_URL"
           echo "   Static Web App: $STATIC_URL"
           echo "   Mock Webhook: http://localhost:5000"
@@ -301,11 +301,11 @@ jobs:
           for i in {1..3}; do
             MOCK_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:5000/health" || echo "000")
             if [[ "$MOCK_STATUS" == 200 ]]; then
-              echo "✅ Mock Webhook Client responding: $MOCK_STATUS"
+              echo "SUCCESS: Mock Webhook Client responding: $MOCK_STATUS"
               break
             fi
             if [[ $i -eq 3 ]]; then
-              echo "❌ Mock Webhook Client failed to respond"
+              echo "ERROR: Mock Webhook Client failed to respond"
               exit 1
             fi
             sleep 5
@@ -318,19 +318,19 @@ jobs:
             
             HEALTH_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$FUNCTION_URL/api/health" || echo "000")
             if [[ "$HEALTH_STATUS" == 200 ]]; then
-              echo "✅ Functions health endpoint responding: $HEALTH_STATUS"
+              echo "SUCCESS: Functions health endpoint responding: $HEALTH_STATUS"
               break
             fi
             
             # Test main functions endpoint
             MAIN_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$FUNCTION_URL" || echo "000")
             if [[ "$MAIN_STATUS" == 200 || "$MAIN_STATUS" == 404 || "$MAIN_STATUS" == 401 ]]; then
-              echo "✅ Functions app responding: $MAIN_STATUS"
+              echo "SUCCESS: Functions app responding: $MAIN_STATUS"
               break
             fi
             
             if [[ $i -eq 6 ]]; then
-              echo "❌ Functions app failed to respond after 6 attempts"
+              echo "ERROR: Functions app failed to respond after 6 attempts"
               echo "   Health: $HEALTH_STATUS, Main: $MAIN_STATUS"
               exit 1
             fi
@@ -346,12 +346,12 @@ jobs:
             
             STATIC_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$STATIC_URL" || echo "000")
             if [[ "$STATIC_STATUS" == 200 || "$STATIC_STATUS" == 301 || "$STATIC_STATUS" == 302 ]]; then
-              echo "✅ Static Web App responding: $STATIC_STATUS"
+              echo "SUCCESS: Static Web App responding: $STATIC_STATUS"
               break
             fi
             
             if [[ $i -eq 6 ]]; then
-              echo "❌ Static Web App failed to respond after 6 attempts"
+              echo "ERROR: Static Web App failed to respond after 6 attempts"
               echo "   Status: $STATIC_STATUS"
               exit 1
             fi
@@ -360,12 +360,12 @@ jobs:
             sleep 10
           done
           
-          echo "✅ All applications deployment successful and healthy!"
+          echo "SUCCESS: All applications deployment successful and healthy!"
       
       - name: Test webhook integration
         shell: bash
         run: |
-          echo "🧪 Testing webhook integration..."
+          echo "TEST: Testing webhook integration..."
           
           # Send test webhook to mock client
           curl -X POST "http://localhost:5000/webhook" \
@@ -382,11 +382,11 @@ jobs:
           sleep 2
           WEBHOOK_COUNT=$(curl -s "http://localhost:5000/webhooks" | jq length 2>/dev/null || echo "0")
           if [ "$WEBHOOK_COUNT" -lt 1 ]; then
-            echo "❌ Mock webhook client did not receive test webhook"
+            echo "ERROR: Mock webhook client did not receive test webhook"
             exit 1
           fi
           
-          echo "✅ Webhook integration test successful ($WEBHOOK_COUNT webhooks received)"
+          echo "SUCCESS: Webhook integration test successful ($WEBHOOK_COUNT webhooks received)"
       
       - name: Stop Mock Webhook Client
         if: always()
@@ -394,7 +394,7 @@ jobs:
         run: |
           if [ -f webhook-client/webhook_client.pid ]; then
             kill $(cat webhook-client/webhook_client.pid) || true
-            echo "🛑 Mock Webhook Client stopped"
+            echo "STOPPED: Mock Webhook Client stopped"
           fi
 
   notify:
@@ -409,20 +409,20 @@ jobs:
           STATIC_WEB_APP_NAME="${{ needs.deploy-and-configure.outputs.static-web-app-name }}"
           
           if [[ "${{ needs.test-and-notify.result }}" == "success" ]]; then
-            echo "✅ Deployment succeeded"
-            echo "🚀 Function App: https://$FUNCTION_APP_NAME.azurewebsites.net"
-            echo "🌐 Static Web App: https://$STATIC_WEB_APP_NAME.azurestaticapps.net"
-            echo "🔐 Configuration: 100% Azure-managed (no GitHub secrets for app config)"
+            echo "SUCCESS: Deployment succeeded"
+            echo "STARTED: Function App: https://$FUNCTION_APP_NAME.azurewebsites.net"
+            echo "WEB: Static Web App: https://$STATIC_WEB_APP_NAME.azurestaticapps.net"
+            echo "CONFIG: Configuration: 100% Azure-managed (no GitHub secrets for app config)"
             if [[ "${{ needs.test-and-build.outputs.infra-changed }}" == "true" ]]; then
-              echo "📦 Infrastructure: Deployed (changes detected or forced)"
+              echo "INFRA: Infrastructure: Deployed (changes detected or forced)"
             else
-              echo "📦 Infrastructure: Used existing resources"
+              echo "INFRA: Infrastructure: Used existing resources"
             fi
-            echo "🧪 Tests: All passed including webhook integration"
-            echo "🏗️ SOLID Architecture: Enterprise-grade patterns implemented"
+            echo "TEST: Tests: All passed including webhook integration"
+            echo "BUILD: SOLID Architecture: Enterprise-grade patterns implemented"
           else
-            echo "❌ Deployment failed — check job logs"
-            echo "📋 Pipeline status:"
+            echo "ERROR: Deployment failed — check job logs"
+            echo "STATUS: Pipeline status:"
             echo "   Test & Build: ${{ needs.test-and-build.result }}"
             echo "   Deploy & Configure: ${{ needs.deploy-and-configure.result }}"
             echo "   Test & Notify: ${{ needs.test-and-notify.result }}"
