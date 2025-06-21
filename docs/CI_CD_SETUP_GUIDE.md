@@ -24,6 +24,47 @@ The project uses a clean, minimal set of GitHub Actions workflows:
 
 **Removed redundant workflows** that were causing multiple triggers and deployment conflicts.
 
+## 🔄 **CI/CD Pipeline Structure**
+
+The pipeline follows a **4-step approach** for reliable and comprehensive deployments:
+
+### **Step 1: Build and Test** 🏗️
+- **Purpose**: Compile code, run unit tests, perform quality checks
+- **Activities**:
+  - Restore dependencies (.NET and Node.js)
+  - Build applications (Functions and React UI)
+  - Run unit tests (.NET test runner)
+  - Code quality and security scanning (placeholders)
+  - Package applications for deployment
+
+### **Step 2: Deploy and Configure** 🚀
+- **Purpose**: Deploy infrastructure and applications to Azure
+- **Activities**:
+  - Deploy/update Azure infrastructure (Bicep templates)
+  - Configure Azure resources (CORS, app settings, etc.)
+  - Deploy Azure Functions and Static Web App
+  - Post-deployment configuration and setup
+
+### **Step 3: Test and Validate** 🧪
+- **Purpose**: Verify deployment success and application functionality
+- **Activities**:
+  - Health checks (Function App and Static Web App)
+  - Integration tests (API endpoints, database connections)
+  - End-to-end tests (UI workflows)
+  - Performance and security testing (placeholders)
+
+### **Step 4: Notify** 📢
+- **Purpose**: Communicate deployment results to team and stakeholders
+- **Activities**:
+  - Generate deployment summary
+  - Send notifications (Slack, Teams, email placeholders)
+  - Create GitHub issues on failures (placeholder)
+  - Update documentation and status pages
+
+**All steps include placeholders for future enhancements** - tests and notifications can be expanded as the project grows.
+
+---
+
 ## 🎯 **Prerequisites**
 
 1. **GitHub Repository**: `https://github.com/Ermey-Enterprises/MemberPropertyMarketAlert.git`

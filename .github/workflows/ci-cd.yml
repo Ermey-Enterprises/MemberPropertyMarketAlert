@@ -1,4 +1,4 @@
-name: Simplified Continuous Deployment
+name: CI/CD Pipeline - Build, Deploy, Test, Notify
 
 on:
   push:
@@ -19,10 +19,15 @@ env:
   AZURE_LOCATION: 'eastus'
 
 jobs:
-  build:
+  # Step 1: Build and Test
+  build-and-test:
     runs-on: ubuntu-latest
+    outputs:
+      function-app-name: ${{ steps.resource-info.outputs.functionAppName }}
+      static-web-app-name: ${{ steps.resource-info.outputs.staticWebAppName }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -42,12 +47,26 @@ jobs:
       - name: Build .NET solution
         run: dotnet build MemberPropertyMarketAlert.sln --no-restore --configuration Release
       
-      - name: Run .NET tests
+      - name: Run Unit Tests (.NET)
         run: dotnet test MemberPropertyMarketAlert.sln --no-build --configuration Release --verbosity normal
       
       - name: Install UI dependencies
         working-directory: src/MemberPropertyAlert.UI
         run: npm install
+      
+      - name: Run UI Tests (Placeholder)
+        working-directory: src/MemberPropertyAlert.UI
+        run: |
+          echo "🧪 Placeholder for UI unit tests"
+          echo "TODO: Add Jest/React Testing Library tests"
+          # npm test -- --coverage --watchAll=false
+      
+      - name: Run Linting and Code Quality Checks (Placeholder)
+        run: |
+          echo "🔍 Placeholder for code quality checks"
+          echo "TODO: Add ESLint, SonarQube, or similar"
+          # dotnet tool install --global dotnet-sonarscanner
+          # npm run lint
       
       - name: Build React UI
         working-directory: src/MemberPropertyAlert.UI
@@ -60,6 +79,13 @@ jobs:
             --output ./publish/functions \
             --no-restore \
             --no-build
+      
+      - name: Run Security Scans (Placeholder)
+        run: |
+          echo "🔒 Placeholder for security scanning"
+          echo "TODO: Add SAST/dependency vulnerability scanning"
+          # npm audit --audit-level high
+          # dotnet list package --vulnerable
       
       - name: Upload Functions artifact
         uses: actions/upload-artifact@v4
@@ -74,12 +100,24 @@ jobs:
           name: react-ui
           path: src/MemberPropertyAlert.UI/build
           retention-days: 1
+      
+      - name: Get Azure Resource Information
+        id: resource-info
+        run: |
+          # Get resource names for downstream jobs (these should exist from previous deployments)
+          echo "functionAppName=func-member-property-alert-dev" >> $GITHUB_OUTPUT
+          echo "staticWebAppName=swa-member-property-alert-dev" >> $GITHUB_OUTPUT
 
-  deploy:
+  # Step 2: Deploy and Configure
+  deploy-and-configure:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build-and-test
+    outputs:
+      deployment-url: ${{ steps.deployment-info.outputs.deploymentUrl }}
+      function-url: ${{ steps.deployment-info.outputs.functionUrl }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         
       - name: Azure Login
         uses: azure/login@v2
@@ -90,10 +128,10 @@ jobs:
       
       - name: Deploy Infrastructure
         run: |
-          echo "Creating resource group..."
+          echo "🏗️ Creating/updating resource group..."
           az group create --name ${{ env.AZURE_RESOURCE_GROUP }} --location ${{ env.AZURE_LOCATION }}
           
-          echo "Deploying Bicep template..."
+          echo "🚀 Deploying Bicep template..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --template-file infra/main.bicep \
@@ -110,8 +148,15 @@ jobs:
           echo "functionAppName=$FUNCTION_APP" >> $GITHUB_OUTPUT
           echo "staticWebAppName=$STATIC_WEB_APP" >> $GITHUB_OUTPUT
           
-          echo "Found Function App: $FUNCTION_APP"
-          echo "Found Static Web App: $STATIC_WEB_APP"
+          echo "✅ Found Function App: $FUNCTION_APP"
+          echo "✅ Found Static Web App: $STATIC_WEB_APP"
+      
+      - name: Configure Azure Resources (Placeholder)
+        run: |
+          echo "⚙️ Placeholder for resource configuration"
+          echo "TODO: Configure CORS, connection strings, app settings"
+          # az functionapp cors add --name ${{ steps.resources.outputs.functionAppName }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --allowed-origins "*"
+          # az functionapp config appsettings set --name ${{ steps.resources.outputs.functionAppName }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --settings @appsettings.json
       
       - name: Download Functions artifact
         uses: actions/download-artifact@v4
@@ -148,3 +193,183 @@ jobs:
           action: "upload"
           app_location: "./ui"
           skip_app_build: true
+      
+      - name: Post-Deployment Configuration (Placeholder)
+        run: |
+          echo "🔧 Placeholder for post-deployment configuration"
+          echo "TODO: Configure routing rules, headers, redirects"
+          # Configure SWA routing, headers, etc.
+      
+      - name: Get Deployment URLs
+        id: deployment-info
+        run: |
+          FUNCTION_URL="https://${{ steps.resources.outputs.functionAppName }}.azurewebsites.net"
+          SWA_URL=$(az staticwebapp show --name ${{ steps.resources.outputs.staticWebAppName }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "defaultHostname" -o tsv)
+          DEPLOYMENT_URL="https://$SWA_URL"
+          
+          echo "deploymentUrl=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "functionUrl=$FUNCTION_URL" >> $GITHUB_OUTPUT
+          
+          echo "🌐 Deployment URL: $DEPLOYMENT_URL"
+          echo "⚡ Function URL: $FUNCTION_URL"
+
+  # Step 3: Test and Validate
+  test-and-validate:
+    runs-on: ubuntu-latest
+    needs: deploy-and-configure
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js for testing
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install test dependencies (Placeholder)
+        run: |
+          echo "📦 Placeholder for test dependency installation"
+          echo "TODO: Install Playwright, Cypress, or similar E2E testing tools"
+          # npm install -g @playwright/test
+          # npx playwright install
+      
+      - name: Health Check - Function App
+        run: |
+          echo "🏥 Testing Function App health..."
+          FUNCTION_URL="${{ needs.deploy-and-configure.outputs.function-url }}"
+          
+          # Basic health check
+          if curl -f -s "$FUNCTION_URL/api/health" > /dev/null 2>&1; then
+            echo "✅ Function App is responding"
+          else
+            echo "⚠️ Function App health check failed - this may be expected if no health endpoint exists yet"
+            echo "TODO: Implement /api/health endpoint"
+          fi
+      
+      - name: Health Check - Static Web App
+        run: |
+          echo "🏥 Testing Static Web App health..."
+          DEPLOYMENT_URL="${{ needs.deploy-and-configure.outputs.deployment-url }}"
+          
+          # Basic health check
+          if curl -f -s "$DEPLOYMENT_URL" > /dev/null 2>&1; then
+            echo "✅ Static Web App is responding"
+          else
+            echo "❌ Static Web App health check failed"
+            exit 1
+          fi
+      
+      - name: Integration Tests (Placeholder)
+        run: |
+          echo "🔗 Placeholder for integration tests"
+          echo "TODO: Test API endpoints, database connections"
+          echo "Function URL: ${{ needs.deploy-and-configure.outputs.function-url }}"
+          echo "Deployment URL: ${{ needs.deploy-and-configure.outputs.deployment-url }}"
+          # Run API integration tests
+          # Test database connectivity
+          # Test external service integrations
+      
+      - name: End-to-End Tests (Placeholder)
+        run: |
+          echo "🎭 Placeholder for E2E tests"
+          echo "TODO: Add Playwright/Cypress tests"
+          echo "Deployment URL: ${{ needs.deploy-and-configure.outputs.deployment-url }}"
+          # npx playwright test --base-url="${{ needs.deploy-and-configure.outputs.deployment-url }}"
+      
+      - name: Performance Tests (Placeholder)
+        run: |
+          echo "⚡ Placeholder for performance tests"
+          echo "TODO: Add load testing with Artillery, k6, or similar"
+          # artillery quick --count 10 --num 5 "${{ needs.deploy-and-configure.outputs.deployment-url }}"
+      
+      - name: Security Tests (Placeholder)
+        run: |
+          echo "🔒 Placeholder for security tests"
+          echo "TODO: Add OWASP ZAP, security headers validation"
+          # Test for security headers, HTTPS enforcement, etc.
+      
+      - name: Accessibility Tests (Placeholder)
+        run: |
+          echo "♿ Placeholder for accessibility tests"
+          echo "TODO: Add axe-core or Pa11y accessibility testing"
+          # Test WCAG compliance
+
+  # Step 4: Notify
+  notify:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, deploy-and-configure, test-and-validate]
+    if: always()
+    steps:
+      - name: Determine Overall Status
+        id: status
+        run: |
+          BUILD_STATUS="${{ needs.build-and-test.result }}"
+          DEPLOY_STATUS="${{ needs.deploy-and-configure.result }}"
+          TEST_STATUS="${{ needs.test-and-validate.result }}"
+          
+          if [[ "$BUILD_STATUS" == "success" && "$DEPLOY_STATUS" == "success" && "$TEST_STATUS" == "success" ]]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "message=🎉 Deployment completed successfully!" >> $GITHUB_OUTPUT
+            echo "color=good" >> $GITHUB_OUTPUT
+          elif [[ "$BUILD_STATUS" == "failure" ]]; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "message=❌ Build and test phase failed" >> $GITHUB_OUTPUT
+            echo "color=danger" >> $GITHUB_OUTPUT
+          elif [[ "$DEPLOY_STATUS" == "failure" ]]; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "message=❌ Deployment phase failed" >> $GITHUB_OUTPUT
+            echo "color=danger" >> $GITHUB_OUTPUT
+          elif [[ "$TEST_STATUS" == "failure" ]]; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "message=⚠️ Deployment succeeded but tests failed" >> $GITHUB_OUTPUT
+            echo "color=warning" >> $GITHUB_OUTPUT
+          else
+            echo "status=cancelled" >> $GITHUB_OUTPUT
+            echo "message=⏹️ Pipeline was cancelled or skipped" >> $GITHUB_OUTPUT
+            echo "color=warning" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: GitHub Status Summary
+        run: |
+          echo "## 📊 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ steps.status.outputs.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Phase | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Test | ${{ needs.build-and-test.result == 'success' && '✅' || '❌' }} ${{ needs.build-and-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy & Configure | ${{ needs.deploy-and-configure.result == 'success' && '✅' || '❌' }} ${{ needs.deploy-and-configure.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test & Validate | ${{ needs.test-and-validate.result == 'success' && '✅' || '❌' }} ${{ needs.test-and-validate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.deploy-and-configure.outputs.deployment-url }}" != "" ]]; then
+            echo "**🌐 Deployment URL:** ${{ needs.deploy-and-configure.outputs.deployment-url }}" >> $GITHUB_STEP_SUMMARY
+            echo "**⚡ Function URL:** ${{ needs.deploy-and-configure.outputs.function-url }}" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Slack Notification (Placeholder)
+        run: |
+          echo "💬 Placeholder for Slack notification"
+          echo "Status: ${{ steps.status.outputs.status }}"
+          echo "Message: ${{ steps.status.outputs.message }}"
+          echo "TODO: Add Slack webhook integration"
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"${{ steps.status.outputs.message }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+      
+      - name: Teams Notification (Placeholder)
+        run: |
+          echo "📧 Placeholder for Teams notification"
+          echo "TODO: Add Microsoft Teams webhook integration"
+      
+      - name: Email Notification (Placeholder)
+        run: |
+          echo "📧 Placeholder for email notification"
+          echo "TODO: Add email notification for failures"
+      
+      - name: Create GitHub Issue on Failure (Placeholder)
+        if: steps.status.outputs.status == 'failure'
+        run: |
+          echo "🐛 Placeholder for auto-issue creation on failure"
+          echo "TODO: Automatically create GitHub issue for deployment failures"
+          # gh issue create --title "Deployment Failure" --body "Pipeline failed at ${{ github.sha }}"
