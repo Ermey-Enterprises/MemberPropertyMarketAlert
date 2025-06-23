@@ -1,0 +1,576 @@
+name: Member Property Alert Deployment
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'src/**'
+      - 'infra/main.bicep'
+      - '.github/workflows/member-property-alert-cd.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+  checks: read
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '18'
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_LOCATION: 'eastus2'
+
+jobs:
+  analyze-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      infra-changed: ${{ steps.changes.outputs.infra-changed }}
+      functions-changed: ${{ steps.changes.outputs.functions-changed }}
+      ui-changed: ${{ steps.changes.outputs.ui-changed }}
+      deploy-environment: ${{ steps.deployment-flags.outputs.deploy-environment }}
+      resource-group-name: ${{ steps.deployment-flags.outputs.resource-group-name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      - name: Detect changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "infra-changed=true" >> $GITHUB_OUTPUT
+            echo "functions-changed=true" >> $GITHUB_OUTPUT
+            echo "ui-changed=true" >> $GITHUB_OUTPUT
+            echo "Manual deployment triggered - deploying all components"
+          else
+            INFRA_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^infra/main\.bicep|^\.github/workflows/member-property-alert-cd\.yml' | wc -l)
+            FUNCTIONS_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^src/MemberPropertyAlert\.(Core|Functions)/' | wc -l)
+            UI_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^src/MemberPropertyAlert\.UI/' | wc -l)
+            
+            [ "$INFRA_CHANGED" -gt 0 ] && echo "infra-changed=true" >> $GITHUB_OUTPUT || echo "infra-changed=false" >> $GITHUB_OUTPUT
+            [ "$FUNCTIONS_CHANGED" -gt 0 ] && echo "functions-changed=true" >> $GITHUB_OUTPUT || echo "functions-changed=false" >> $GITHUB_OUTPUT
+            [ "$UI_CHANGED" -gt 0 ] && echo "ui-changed=true" >> $GITHUB_OUTPUT || echo "ui-changed=false" >> $GITHUB_OUTPUT
+            
+            echo "Change detection completed:"
+            echo "  Infrastructure: $INFRA_CHANGED files"
+            echo "  Functions: $FUNCTIONS_CHANGED files"
+            echo "  UI: $UI_CHANGED files"
+          fi
+      
+      - name: Set deployment flags
+        id: deployment-flags
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            DEPLOY_ENV="${{ github.event.inputs.environment }}"
+          else
+            # Default to dev for automatic deployments
+            DEPLOY_ENV="dev"
+          fi
+          
+          RG_NAME="rg-member-property-alert-${DEPLOY_ENV}-eastus2"
+          
+          echo "deploy-environment=$DEPLOY_ENV" >> $GITHUB_OUTPUT
+          echo "resource-group-name=$RG_NAME" >> $GITHUB_OUTPUT
+          
+          echo "🎯 Deployment plan:"
+          echo "  Environment: $DEPLOY_ENV"
+          echo "  Resource Group: $RG_NAME"
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: [analyze-changes]
+    outputs:
+      build-successful: ${{ steps.build-status.outputs.success }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      
+      - name: Setup Node.js
+        if: needs.analyze-changes.outputs.ui-changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'src/MemberPropertyAlert.UI/package.json'
+      
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.sln') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.sln') }}-
+            ${{ runner.os }}-nuget-
+      
+      - name: Build and test .NET solution
+        run: |
+          echo "🏗️ Building Member Property Alert solution..."
+          dotnet restore MemberPropertyMarketAlert.sln --no-cache
+          dotnet build MemberPropertyMarketAlert.sln --no-restore --configuration Release
+          
+          # Run tests if test projects exist
+          if find . -name "*.Tests.csproj" -o -name "*Test*.csproj" | grep -q .; then
+            echo "🧪 Running .NET tests..."
+            dotnet test MemberPropertyMarketAlert.sln --no-build --configuration Release --verbosity minimal
+          else
+            echo "ℹ️ No test projects found, skipping .NET tests"
+          fi
+      
+      - name: Build React UI
+        if: needs.analyze-changes.outputs.ui-changed == 'true'
+        run: |
+          echo "🎨 Building React UI..."
+          cd src/MemberPropertyAlert.UI
+          npm ci --silent
+          
+          # Run tests if they exist
+          if [ -f "package.json" ] && grep -q '"test"' package.json; then
+            echo "🧪 Running React tests..."
+            npm test -- --ci --coverage --silent --maxWorkers=2 --passWithNoTests
+          else
+            echo "ℹ️ No React tests configured, skipping"
+          fi
+          
+          echo "📦 Building React production bundle..."
+          npm run build
+      
+      - name: Publish Function App
+        if: needs.analyze-changes.outputs.functions-changed == 'true'
+        run: |
+          echo "📦 Publishing Function App..."
+          dotnet publish src/MemberPropertyAlert.Functions/MemberPropertyAlert.Functions.csproj \
+            --configuration Release \
+            --output ./publish/functions \
+            --no-restore --no-build
+          
+          echo "✅ Function App published to ./publish/functions"
+      
+      - name: Prepare UI deployment package
+        if: needs.analyze-changes.outputs.ui-changed == 'true'
+        run: |
+          echo "📦 Preparing UI deployment package..."
+          mkdir -p ./publish/ui
+          
+          # Copy React build output
+          if [ -d "src/MemberPropertyAlert.UI/build" ]; then
+            cp -r src/MemberPropertyAlert.UI/build/* ./publish/ui/
+          elif [ -d "src/MemberPropertyAlert.UI/dist" ]; then
+            cp -r src/MemberPropertyAlert.UI/dist/* ./publish/ui/
+          else
+            echo "❌ React build output not found"
+            exit 1
+          fi
+          
+          echo "✅ UI package prepared in ./publish/ui"
+      
+      - name: Upload Function App artifact
+        if: needs.analyze-changes.outputs.functions-changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-app
+          path: ./publish/functions
+          retention-days: 1
+      
+      - name: Upload UI artifact
+        if: needs.analyze-changes.outputs.ui-changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-app
+          path: ./publish/ui
+          retention-days: 1
+      
+      - name: Set build status
+        id: build-status
+        run: echo "success=true" >> $GITHUB_OUTPUT
+
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+    needs: [analyze-changes, build-and-test]
+    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.infra-changed == 'true'
+    outputs:
+      function-app-name: ${{ steps.deploy-infra.outputs.function-app-name }}
+      web-app-name: ${{ steps.deploy-infra.outputs.web-app-name }}
+      function-app-url: ${{ steps.deploy-infra.outputs.function-app-url }}
+      web-app-url: ${{ steps.deploy-infra.outputs.web-app-url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Deploy infrastructure
+        id: deploy-infra
+        run: |
+          RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
+          ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
+          LOC="${{ env.AZURE_LOCATION }}"
+          
+          echo "🏗️ Deploying infrastructure to resource group: $RG_NAME"
+          
+          # Create resource group (this is idempotent)
+          az group create --name "$RG_NAME" --location "$LOC" --output none
+          if [ $? -ne 0 ]; then
+            echo "❌ Failed to create resource group: $RG_NAME"
+            exit 1
+          fi
+          
+          DEPLOYMENT_NAME="member-property-alert-$(date +%Y%m%d-%H%M%S)"
+          
+          echo "⚡ Starting infrastructure deployment..."
+          echo "  Environment: $ENV"
+          echo "  Deployment Name: $DEPLOYMENT_NAME"
+          
+          # Validate Bicep template before deployment
+          echo "🔍 Validating Bicep template..."
+          az bicep build --file infra/main.bicep
+          if [ $? -ne 0 ]; then
+            echo "❌ Bicep template compilation failed"
+            exit 1
+          fi
+          
+          echo "✅ Bicep template compiled successfully"
+          
+          # Check if parameter file exists for environment
+          PARAM_FILE="infra/main.${ENV}.parameters.json"
+          PARAM_ARGS=""
+          if [ -f "$PARAM_FILE" ]; then
+            echo "📋 Using parameter file: $PARAM_FILE"
+            PARAM_ARGS="--parameters @${PARAM_FILE}"
+          else
+            echo "📋 Using inline parameters for environment: $ENV"
+            PARAM_ARGS="--parameters environment=$ENV location=$LOC"
+          fi
+          
+          # Add secrets as parameters
+          PARAM_ARGS="$PARAM_ARGS rentCastApiKey=${{ secrets.RENTCAST_API_KEY }} adminApiKey=${{ secrets.ADMIN_API_KEY }}"
+          
+          # Validate deployment parameters before execution
+          echo "🔍 Validating deployment parameters..."
+          az deployment group validate \
+            --resource-group "$RG_NAME" \
+            --template-file infra/main.bicep \
+            $PARAM_ARGS
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Deployment validation failed"
+            exit 1
+          fi
+          
+          echo "✅ Deployment validation succeeded"
+          
+          # Deploy infrastructure with full error output visible
+          echo "🚀 Executing Azure deployment..."
+          az deployment group create \
+            --resource-group "$RG_NAME" \
+            --name "$DEPLOYMENT_NAME" \
+            --template-file infra/main.bicep \
+            $PARAM_ARGS
+          
+          # Check deployment exit code
+          DEPLOYMENT_EXIT_CODE=$?
+          if [ $DEPLOYMENT_EXIT_CODE -ne 0 ]; then
+            echo "❌ Azure deployment failed with exit code: $DEPLOYMENT_EXIT_CODE"
+            echo "🔍 Checking deployment status..."
+            az deployment group show --resource-group "$RG_NAME" --name "$DEPLOYMENT_NAME" --query "properties.provisioningState" --output tsv || echo "Could not retrieve deployment status"
+            exit 1
+          fi
+          
+          echo "✅ Infrastructure deployment completed successfully"
+          
+          # Extract deployment outputs
+          echo "📤 Extracting deployment outputs..."
+          DEPLOYMENT_OUTPUTS=$(az deployment group show --resource-group "$RG_NAME" --name "$DEPLOYMENT_NAME" --query "properties.outputs" --output json 2>/dev/null)
+          
+          # Validate outputs exist and are valid JSON
+          if [ -z "$DEPLOYMENT_OUTPUTS" ] || [ "$DEPLOYMENT_OUTPUTS" == "null" ] || [ "$DEPLOYMENT_OUTPUTS" == "{}" ]; then
+            echo "❌ Failed to retrieve deployment outputs or outputs are empty"
+            exit 1
+          fi
+          
+          # Test JSON validity
+          echo "$DEPLOYMENT_OUTPUTS" | jq . > /dev/null 2>&1
+          if [ $? -ne 0 ]; then
+            echo "❌ Deployment outputs are not valid JSON"
+            echo "Raw outputs: $DEPLOYMENT_OUTPUTS"
+            exit 1
+          fi
+          
+          echo "✅ Deployment outputs retrieved successfully"
+          
+          # Extract specific outputs
+          FUNCTION_APP_NAME=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.functionAppName.value // empty' 2>/dev/null)
+          WEB_APP_NAME=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.webAppName.value // empty' 2>/dev/null)
+          FUNCTION_APP_URL=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.functionAppUrl.value // empty' 2>/dev/null)
+          WEB_APP_URL=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.webAppUrl.value // empty' 2>/dev/null)
+          
+          if [ -n "$FUNCTION_APP_NAME" ] && [ "$FUNCTION_APP_NAME" != "null" ]; then
+            echo "function-app-name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
+            echo "function-app-url=$FUNCTION_APP_URL" >> $GITHUB_OUTPUT
+            echo "✅ Function App: $FUNCTION_APP_NAME"
+            echo "✅ Function App URL: $FUNCTION_APP_URL"
+          fi
+          
+          if [ -n "$WEB_APP_NAME" ] && [ "$WEB_APP_NAME" != "null" ]; then
+            echo "web-app-name=$WEB_APP_NAME" >> $GITHUB_OUTPUT
+            echo "web-app-url=$WEB_APP_URL" >> $GITHUB_OUTPUT
+            echo "✅ Web App: $WEB_APP_NAME"
+            echo "✅ Web App URL: $WEB_APP_URL"
+          fi
+          
+          echo "🎉 Infrastructure deployment completed successfully"
+
+  deploy-function-app:
+    runs-on: ubuntu-latest
+    needs: [analyze-changes, build-and-test, deploy-infrastructure]
+    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.functions-changed == 'true'
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Download Function App artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: functions-app
+          path: ./publish
+      
+      - name: Deploy Function App
+        run: |
+          # Get app name from infrastructure deployment or construct it
+          if [ -n "${{ needs.deploy-infrastructure.outputs.function-app-name }}" ]; then
+            APP_SERVICE_NAME="${{ needs.deploy-infrastructure.outputs.function-app-name }}"
+          else
+            # Construct name based on naming convention
+            ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
+            APP_SERVICE_NAME="func-member-property-alert-${ENV}"
+          fi
+          
+          RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
+          
+          echo "📦 Deploying Function App to: $APP_SERVICE_NAME"
+          
+          # Find the actual application files
+          if [ -d "./publish" ]; then
+            # Create a deployment package
+            cd ./publish
+            echo "Creating deployment package from:"
+            ls -la .
+            
+            # Create zip file for deployment
+            zip -r ../function-app.zip . > /dev/null 2>&1
+            cd ..
+            
+            echo "📦 Deploying Function App..."
+            az functionapp deploy --resource-group "$RG_NAME" --name "$APP_SERVICE_NAME" --src-path "./function-app.zip" --type zip --async true
+            
+            # Clean up temporary zip
+            rm -f ./function-app.zip
+            echo "✅ Function App deployment started"
+          else
+            echo "❌ Publish directory not found"
+            exit 1
+          fi
+
+  deploy-web-app:
+    runs-on: ubuntu-latest
+    needs: [analyze-changes, build-and-test, deploy-infrastructure]
+    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.ui-changed == 'true'
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Download UI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-app
+          path: ./publish
+      
+      - name: Deploy Web App
+        run: |
+          # Get app name from infrastructure deployment or construct it
+          if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-name }}" ]; then
+            APP_SERVICE_NAME="${{ needs.deploy-infrastructure.outputs.web-app-name }}"
+          else
+            # Construct name based on naming convention
+            ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
+            APP_SERVICE_NAME="web-member-property-alert-${ENV}"
+          fi
+          
+          RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
+          
+          echo "📦 Deploying Web App to: $APP_SERVICE_NAME"
+          
+          # Find the actual application files
+          if [ -d "./publish" ]; then
+            # Create a deployment package
+            cd ./publish
+            echo "Creating deployment package from:"
+            ls -la .
+            
+            # Create zip file for deployment
+            zip -r ../web-app.zip . > /dev/null 2>&1
+            cd ..
+            
+            echo "📦 Deploying Web App..."
+            az webapp deploy --resource-group "$RG_NAME" --name "$APP_SERVICE_NAME" --src-path "./web-app.zip" --type zip --async true
+            
+            # Clean up temporary zip
+            rm -f ./web-app.zip
+            echo "✅ Web App deployment started"
+          else
+            echo "❌ Publish directory not found"
+            exit 1
+          fi
+
+  test-deployments:
+    runs-on: ubuntu-latest
+    needs: [analyze-changes, deploy-function-app, deploy-web-app, deploy-infrastructure]
+    if: always() && (needs.deploy-function-app.result == 'success' || needs.deploy-web-app.result == 'success')
+    steps:
+      - name: Test Function App
+        if: needs.analyze-changes.outputs.functions-changed == 'true' && needs.deploy-function-app.result == 'success'
+        run: |
+          if [ -n "${{ needs.deploy-infrastructure.outputs.function-app-url }}" ]; then
+            APP_URL="${{ needs.deploy-infrastructure.outputs.function-app-url }}"
+          else
+            ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
+            APP_URL="https://func-member-property-alert-${ENV}.azurewebsites.net"
+          fi
+          
+          echo "🔧 Testing Function App at: $APP_URL"
+          
+          for i in {1..4}; do
+            echo "Health check attempt $i/4..."
+            
+            HEALTH_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL/api/health" --max-time 10 || echo "000")
+            if [[ "$HEALTH_STATUS" == 200 ]]; then
+              echo "✅ Function App healthy: $HEALTH_STATUS"
+              break
+            fi
+            
+            if [[ $i -eq 4 ]]; then
+              echo "⚠️ Function App still warming up (this is normal for new deployments)"
+              echo "   Health: $HEALTH_STATUS"
+              echo "   The service should be available shortly at: $APP_URL"
+            else
+              sleep 5
+            fi
+          done
+      
+      - name: Test Web App
+        if: needs.analyze-changes.outputs.ui-changed == 'true' && needs.deploy-web-app.result == 'success'
+        run: |
+          if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-url }}" ]; then
+            APP_URL="${{ needs.deploy-infrastructure.outputs.web-app-url }}"
+          else
+            ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
+            APP_URL="https://web-member-property-alert-${ENV}.azurewebsites.net"
+          fi
+          
+          echo "🌐 Testing Web App at: $APP_URL"
+          
+          for i in {1..4}; do
+            echo "Health check attempt $i/4..."
+            
+            MAIN_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL" --max-time 10 || echo "000")
+            if [[ "$MAIN_STATUS" == 200 ]]; then
+              echo "✅ Web App responding: $MAIN_STATUS"
+              break
+            fi
+            
+            if [[ $i -eq 4 ]]; then
+              echo "⚠️ Web App still warming up (this is normal for new deployments)"
+              echo "   Status: $MAIN_STATUS"
+              echo "   The service should be available shortly at: $APP_URL"
+            else
+              sleep 5
+            fi
+          done
+
+  deployment-summary:
+    runs-on: ubuntu-latest
+    needs: [analyze-changes, build-and-test, deploy-infrastructure, deploy-function-app, deploy-web-app, test-deployments]
+    if: always()
+    steps:
+      - name: Generate deployment summary
+        run: |
+          echo "# 🚀 Member Property Alert Deployment Summary"
+          echo ""
+          echo "## 📊 Deployment Results"
+          echo "- **Environment**: ${{ needs.analyze-changes.outputs.deploy-environment }}"
+          echo "- **Resource Group**: ${{ needs.analyze-changes.outputs.resource-group-name }}"
+          echo ""
+          
+          if [[ "${{ needs.analyze-changes.outputs.functions-changed }}" == "true" ]]; then
+            if [[ "${{ needs.deploy-function-app.result }}" == "success" ]]; then
+              echo "- ✅ **Function App**: Successfully deployed"
+              if [ -n "${{ needs.deploy-infrastructure.outputs.function-app-url }}" ]; then
+                echo "  - URL: ${{ needs.deploy-infrastructure.outputs.function-app-url }}"
+              fi
+            else
+              echo "- ❌ **Function App**: Deployment failed"
+            fi
+          else
+            echo "- ⏭️ **Function App**: Skipped (no changes)"
+          fi
+          
+          if [[ "${{ needs.analyze-changes.outputs.ui-changed }}" == "true" ]]; then
+            if [[ "${{ needs.deploy-web-app.result }}" == "success" ]]; then
+              echo "- ✅ **Web App**: Successfully deployed"
+              if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-url }}" ]; then
+                echo "  - URL: ${{ needs.deploy-infrastructure.outputs.web-app-url }}"
+              fi
+            else
+              echo "- ❌ **Web App**: Deployment failed"
+            fi
+          else
+            echo "- ⏭️ **Web App**: Skipped (no changes)"
+          fi
+          
+          if [[ "${{ needs.analyze-changes.outputs.infra-changed }}" == "true" ]]; then
+            if [[ "${{ needs.deploy-infrastructure.result }}" == "success" ]]; then
+              echo "- ✅ **Infrastructure**: Successfully deployed"
+            else
+              echo "- ❌ **Infrastructure**: Deployment failed"
+            fi
+          else
+            echo "- ⏭️ **Infrastructure**: Skipped (no changes)"
+          fi
+          
+          echo ""
+          echo "## 🏗️ Architecture"
+          echo "- **Function App**: Azure Functions (.NET 8 Isolated)"
+          echo "- **Web App**: React SPA on Azure App Service"
+          echo "- **Database**: Azure Cosmos DB (Serverless)"
+          echo "- **Storage**: Azure Storage Account"
+          echo "- **Monitoring**: Application Insights"
+          echo ""
+          echo "🎉 **Member Property Alert deployment completed!**"

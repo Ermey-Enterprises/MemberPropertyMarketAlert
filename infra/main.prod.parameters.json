@@ -6,16 +6,26 @@
       "value": "prod"
     },
     "location": {
-      "value": "East US"
+      "value": "eastus2"
     },
     "appName": {
       "value": "member-property-alert"
     },
     "rentCastApiKey": {
-      "value": ""
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/{subscription-id}/resourceGroups/{keyvault-rg}/providers/Microsoft.KeyVault/vaults/{keyvault-name}"
+        },
+        "secretName": "rentcast-api-key"
+      }
     },
     "adminApiKey": {
-      "value": ""
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/{subscription-id}/resourceGroups/{keyvault-rg}/providers/Microsoft.KeyVault/vaults/{keyvault-name}"
+        },
+        "secretName": "admin-api-key"
+      }
     }
   }
 }

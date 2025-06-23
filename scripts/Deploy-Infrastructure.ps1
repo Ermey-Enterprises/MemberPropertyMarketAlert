@@ -1,229 +1,458 @@
 <#
 .SYNOPSIS
-    Deploys the updated infrastructure with corrected CosmosDB containers.
-
+    Deploy Member Property Alert infrastructure to Azure
+    
 .DESCRIPTION
-    This script deploys the updated Bicep infrastructure template that includes
-    the corrected CosmosDB container definitions (Alerts and ScanLogs containers
-    with proper naming and partition keys).
-
-.PARAMETER ResourceGroupName
-    The name of the Azure resource group to deploy to.
-
+    This script deploys the Member Property Alert infrastructure using Azure Bicep templates.
+    It supports multiple environments and includes validation and error handling.
+    
 .PARAMETER Environment
-    The environment to deploy (dev, test, prod). Default is 'dev'.
-
+    The target environment (dev, test, prod)
+    
 .PARAMETER Location
-    The Azure region to deploy to. Default is 'East US'.
-
-.PARAMETER RentCastApiKey
-    The RentCast API key (optional, can be set later).
-
-.PARAMETER AdminApiKey
-    The admin API key for secure endpoints (optional, can be set later).
-
+    Azure region for deployment (default: eastus2)
+    
+.PARAMETER SubscriptionId
+    Azure subscription ID (optional, uses current subscription if not specified)
+    
+.PARAMETER ResourceGroupName
+    Custom resource group name (optional, uses naming convention if not specified)
+    
+.PARAMETER ValidateOnly
+    Only validate the deployment without executing it
+    
 .PARAMETER WhatIf
-    Shows what would be deployed without actually deploying.
-
+    Show what resources would be created/modified without deploying
+    
 .EXAMPLE
-    .\Deploy-Infrastructure.ps1 -ResourceGroupName "rg-member-property-alert-dev"
-
+    .\Deploy-Infrastructure.ps1 -Environment dev
+    
 .EXAMPLE
-    .\Deploy-Infrastructure.ps1 -ResourceGroupName "rg-member-property-alert-dev" -Environment "dev" -WhatIf
+    .\Deploy-Infrastructure.ps1 -Environment prod -Location eastus2 -ValidateOnly
+    
+.EXAMPLE
+    .\Deploy-Infrastructure.ps1 -Environment test -WhatIf
 #>
 
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
+    [ValidateSet("dev", "test", "prod")]
+    [string]$Environment,
+    
+    [Parameter(Mandatory = $false)]
+    [string]$Location = "eastus2",
+    
+    [Parameter(Mandatory = $false)]
+    [string]$SubscriptionId,
+    
+    [Parameter(Mandatory = $false)]
     [string]$ResourceGroupName,
     
     [Parameter(Mandatory = $false)]
-    [ValidateSet("dev", "test", "prod")]
-    [string]$Environment = "dev",
-    
-    [Parameter(Mandatory = $false)]
-    [string]$Location = "East US",
-    
-    [Parameter(Mandatory = $false)]
-    [string]$RentCastApiKey = "",
-    
-    [Parameter(Mandatory = $false)]
-    [string]$AdminApiKey = "",
+    [switch]$ValidateOnly,
     
     [Parameter(Mandatory = $false)]
     [switch]$WhatIf
 )
 
-# Colors for output
-$Red = "Red"
-$Green = "Green"
-$Yellow = "Yellow"
-$Blue = "Blue"
-$Cyan = "Cyan"
-$Magenta = "Magenta"
+# Set error action preference
+$ErrorActionPreference = "Stop"
 
-Write-Host "=== Infrastructure Deployment Script ===" -ForegroundColor $Magenta
-Write-Host "Resource Group: $ResourceGroupName" -ForegroundColor White
-Write-Host "Environment: $Environment" -ForegroundColor White
-Write-Host "Location: $Location" -ForegroundColor White
-Write-Host "What-If Mode: $WhatIf" -ForegroundColor White
-Write-Host ""
+# Script variables
+$ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$ProjectRoot = Split-Path -Parent $ScriptPath
+$BicepTemplate = Join-Path $ProjectRoot "infra\main.bicep"
+$ParameterFile = Join-Path $ProjectRoot "infra\main.$Environment.parameters.json"
 
-# Check if Azure CLI is installed
-if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
-    Write-Host "Error: Azure CLI is not installed. Please install it first." -ForegroundColor $Red
-    Write-Host "Download from: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli" -ForegroundColor $Yellow
-    exit 1
+# Functions
+function Write-Header {
+    param([string]$Message)
+    Write-Host ""
+    Write-Host "=" * 80 -ForegroundColor Cyan
+    Write-Host $Message -ForegroundColor Cyan
+    Write-Host "=" * 80 -ForegroundColor Cyan
 }
 
-# Check if user is logged in
-try {
-    $account = az account show --query name -o tsv 2>$null
-    if (-not $account) {
-        Write-Host "Please log in to Azure..." -ForegroundColor $Yellow
-        az login
-        $account = az account show --query name -o tsv
+function Write-Step {
+    param([string]$Message)
+    Write-Host ""
+    Write-Host "🔹 $Message" -ForegroundColor Yellow
+}
+
+function Write-Success {
+    param([string]$Message)
+    Write-Host "✅ $Message" -ForegroundColor Green
+}
+
+function Write-Error {
+    param([string]$Message)
+    Write-Host "❌ $Message" -ForegroundColor Red
+}
+
+function Write-Warning {
+    param([string]$Message)
+    Write-Host "⚠️ $Message" -ForegroundColor Yellow
+}
+
+function Test-Prerequisites {
+    Write-Step "Checking prerequisites..."
+    
+    # Check if Azure CLI is installed
+    try {
+        $azVersion = az version --output json | ConvertFrom-Json
+        Write-Success "Azure CLI version: $($azVersion.'azure-cli')"
     }
-    Write-Host "✓ Connected to Azure subscription: $account" -ForegroundColor $Green
-}
-catch {
-    Write-Host "Error: Failed to connect to Azure" -ForegroundColor $Red
-    exit 1
-}
-
-# Check if resource group exists
-Write-Host "`nChecking resource group..." -ForegroundColor $Yellow
-$rgExists = az group exists --name $ResourceGroupName
-if ($rgExists -eq "false") {
-    Write-Host "Resource group '$ResourceGroupName' does not exist. Creating it..." -ForegroundColor $Yellow
-    az group create --name $ResourceGroupName --location $Location
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Error: Failed to create resource group" -ForegroundColor $Red
-        exit 1
+    catch {
+        Write-Error "Azure CLI is not installed or not in PATH"
+        throw "Please install Azure CLI: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
     }
-    Write-Host "✓ Resource group created successfully" -ForegroundColor $Green
-}
-else {
-    Write-Host "✓ Resource group exists" -ForegroundColor $Green
-}
-
-# Prepare parameters
-$parametersFile = "infra/main.$Environment.parameters.json"
-if (-not (Test-Path $parametersFile)) {
-    Write-Host "Warning: Parameters file '$parametersFile' not found. Using default parameters." -ForegroundColor $Yellow
-    $parametersFile = $null
-}
-
-# Build deployment command
-$deploymentName = "infrastructure-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-$bicepFile = "infra/main.bicep"
-
-if (-not (Test-Path $bicepFile)) {
-    Write-Host "Error: Bicep template '$bicepFile' not found" -ForegroundColor $Red
-    exit 1
-}
-
-Write-Host "`nPreparing deployment..." -ForegroundColor $Yellow
-Write-Host "Deployment Name: $deploymentName" -ForegroundColor White
-Write-Host "Bicep Template: $bicepFile" -ForegroundColor White
-Write-Host "Parameters File: $(if ($parametersFile) { $parametersFile } else { 'None (using defaults)' })" -ForegroundColor White
-
-# Build command arguments
-$deployArgs = @(
-    "deployment", "group", "create",
-    "--resource-group", $ResourceGroupName,
-    "--name", $deploymentName,
-    "--template-file", $bicepFile,
-    "--parameters", "environment=$Environment"
-)
-
-if ($parametersFile) {
-    $deployArgs += "--parameters"
-    $deployArgs += "@$parametersFile"
-}
-
-if ($RentCastApiKey) {
-    $deployArgs += "--parameters"
-    $deployArgs += "rentCastApiKey=$RentCastApiKey"
-}
-
-if ($AdminApiKey) {
-    $deployArgs += "--parameters"
-    $deployArgs += "adminApiKey=$AdminApiKey"
-}
-
-if ($WhatIf) {
-    $deployArgs += "--what-if"
-    Write-Host "`n=== WHAT-IF DEPLOYMENT ===" -ForegroundColor $Cyan
-    Write-Host "This will show what would be deployed without making actual changes." -ForegroundColor $Cyan
-}
-else {
-    Write-Host "`n=== STARTING DEPLOYMENT ===" -ForegroundColor $Yellow
-    Write-Host "This will deploy the updated infrastructure with corrected CosmosDB containers." -ForegroundColor $Yellow
-}
-
-Write-Host "`nExecuting: az $($deployArgs -join ' ')" -ForegroundColor $Blue
-Write-Host ""
-
-# Execute deployment
-$startTime = Get-Date
-try {
-    & az @deployArgs
-    $exitCode = $LASTEXITCODE
-}
-catch {
-    Write-Host "Error during deployment: $($_.Exception.Message)" -ForegroundColor $Red
-    exit 1
-}
-
-$endTime = Get-Date
-$duration = $endTime - $startTime
-
-if ($exitCode -eq 0) {
-    if ($WhatIf) {
-        Write-Host "`n✓ What-if analysis completed successfully" -ForegroundColor $Green
-        Write-Host "Review the changes above and run without --WhatIf to deploy." -ForegroundColor $Yellow
+    
+    # Check if logged in to Azure
+    try {
+        $account = az account show --output json | ConvertFrom-Json
+        Write-Success "Logged in as: $($account.user.name)"
+        Write-Success "Current subscription: $($account.name) ($($account.id))"
+    }
+    catch {
+        Write-Error "Not logged in to Azure"
+        throw "Please run 'az login' to authenticate"
+    }
+    
+    # Check if Bicep template exists
+    if (-not (Test-Path $BicepTemplate)) {
+        Write-Error "Bicep template not found: $BicepTemplate"
+        throw "Bicep template is missing"
+    }
+    Write-Success "Bicep template found: $BicepTemplate"
+    
+    # Check if parameter file exists
+    if (-not (Test-Path $ParameterFile)) {
+        Write-Warning "Parameter file not found: $ParameterFile"
+        Write-Host "Will use inline parameters instead"
     }
     else {
-        Write-Host "`n✓ Deployment completed successfully!" -ForegroundColor $Green
-        Write-Host "Duration: $($duration.ToString('mm\:ss'))" -ForegroundColor $White
-        
-        # Get deployment outputs
-        Write-Host "`nRetrieving deployment outputs..." -ForegroundColor $Yellow
-        $outputs = az deployment group show --resource-group $ResourceGroupName --name $deploymentName --query properties.outputs --output json | ConvertFrom-Json
-        
-        if ($outputs) {
-            Write-Host "`n=== Deployment Outputs ===" -ForegroundColor $Magenta
-            if ($outputs.functionAppUrl) {
-                Write-Host "Function App URL: $($outputs.functionAppUrl.value)" -ForegroundColor $White
-            }
-            if ($outputs.webAppUrl) {
-                Write-Host "Web App URL: $($outputs.webAppUrl.value)" -ForegroundColor $White
-            }
-            if ($outputs.cosmosAccountName) {
-                Write-Host "CosmosDB Account: $($outputs.cosmosAccountName.value)" -ForegroundColor $White
-            }
-        }
-        
-        Write-Host "`n=== Next Steps ===" -ForegroundColor $Magenta
-        Write-Host "1. Verify the new containers exist in CosmosDB:" -ForegroundColor $White
-        Write-Host "   - Institutions (partition: /id)" -ForegroundColor $White
-        Write-Host "   - Addresses (partition: /institutionId)" -ForegroundColor $White
-        Write-Host "   - Alerts (partition: /institutionId)" -ForegroundColor $White
-        Write-Host "   - ScanLogs (partition: /institutionId)" -ForegroundColor $White
-        Write-Host "2. Deploy your application code to the updated infrastructure" -ForegroundColor $White
-        Write-Host "3. Test the application to ensure all containers are accessible" -ForegroundColor $White
+        Write-Success "Parameter file found: $ParameterFile"
     }
 }
-else {
-    Write-Host "`n✗ Deployment failed with exit code: $exitCode" -ForegroundColor $Red
-    Write-Host "Check the error messages above for details." -ForegroundColor $Yellow
-    exit $exitCode
+
+function Set-AzureContext {
+    if ($SubscriptionId) {
+        Write-Step "Setting Azure subscription context..."
+        try {
+            az account set --subscription $SubscriptionId
+            Write-Success "Switched to subscription: $SubscriptionId"
+        }
+        catch {
+            Write-Error "Failed to set subscription context"
+            throw
+        }
+    }
 }
 
-Write-Host "`n=== Summary ===" -ForegroundColor $Magenta
-if ($WhatIf) {
-    Write-Host "What-if analysis completed. No changes were made." -ForegroundColor $Cyan
+function Get-ResourceGroupName {
+    if ($ResourceGroupName) {
+        return $ResourceGroupName
+    }
+    else {
+        return "rg-member-property-alert-$Environment-$Location"
+    }
 }
-else {
-    Write-Host "Infrastructure deployment completed with corrected CosmosDB containers." -ForegroundColor $Green
+
+function New-ResourceGroup {
+    param([string]$RgName)
+    
+    Write-Step "Creating resource group: $RgName"
+    
+    try {
+        $rg = az group show --name $RgName --output json 2>$null | ConvertFrom-Json
+        if ($rg) {
+            Write-Success "Resource group already exists: $RgName"
+            return
+        }
+    }
+    catch {
+        # Resource group doesn't exist, create it
+    }
+    
+    try {
+        az group create --name $RgName --location $Location --output none
+        Write-Success "Created resource group: $RgName"
+    }
+    catch {
+        Write-Error "Failed to create resource group: $RgName"
+        throw
+    }
+}
+
+function Test-BicepTemplate {
+    Write-Step "Validating Bicep template..."
+    
+    try {
+        az bicep build --file $BicepTemplate
+        Write-Success "Bicep template compiled successfully"
+    }
+    catch {
+        Write-Error "Bicep template compilation failed"
+        throw
+    }
+}
+
+function Get-DeploymentParameters {
+    param([string]$RgName)
+    
+    $parameters = @()
+    
+    if (Test-Path $ParameterFile) {
+        $parameters += "--parameters"
+        $parameters += "@$ParameterFile"
+        Write-Step "Using parameter file: $ParameterFile"
+    }
+    else {
+        $parameters += "--parameters"
+        $parameters += "environment=$Environment"
+        $parameters += "location=$Location"
+        Write-Step "Using inline parameters for environment: $Environment"
+    }
+    
+    # Add secrets from environment variables if available
+    if ($env:RENTCAST_API_KEY) {
+        $parameters += "rentCastApiKey=$env:RENTCAST_API_KEY"
+        Write-Success "Added RentCast API key from environment variable"
+    }
+    else {
+        Write-Warning "RENTCAST_API_KEY environment variable not set"
+    }
+    
+    if ($env:ADMIN_API_KEY) {
+        $parameters += "adminApiKey=$env:ADMIN_API_KEY"
+        Write-Success "Added Admin API key from environment variable"
+    }
+    else {
+        Write-Warning "ADMIN_API_KEY environment variable not set"
+    }
+    
+    return $parameters
+}
+
+function Invoke-DeploymentValidation {
+    param(
+        [string]$RgName,
+        [string[]]$Parameters
+    )
+    
+    Write-Step "Validating deployment parameters..."
+    
+    try {
+        $cmd = "az deployment group validate --resource-group `"$RgName`" --template-file `"$BicepTemplate`""
+        foreach ($param in $Parameters) {
+            $cmd += " `"$param`""
+        }
+        
+        Invoke-Expression $cmd | Out-Null
+        Write-Success "Deployment validation succeeded"
+    }
+    catch {
+        Write-Error "Deployment validation failed"
+        throw
+    }
+}
+
+function Invoke-WhatIfAnalysis {
+    param(
+        [string]$RgName,
+        [string[]]$Parameters
+    )
+    
+    Write-Step "Running What-If analysis..."
+    
+    try {
+        $cmd = "az deployment group what-if --resource-group `"$RgName`" --template-file `"$BicepTemplate`""
+        foreach ($param in $Parameters) {
+            $cmd += " `"$param`""
+        }
+        
+        Invoke-Expression $cmd
+        Write-Success "What-If analysis completed"
+    }
+    catch {
+        Write-Error "What-If analysis failed"
+        throw
+    }
+}
+
+function Invoke-Deployment {
+    param(
+        [string]$RgName,
+        [string[]]$Parameters
+    )
+    
+    $deploymentName = "member-property-alert-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Write-Step "Starting deployment: $deploymentName"
+    
+    try {
+        $cmd = "az deployment group create --resource-group `"$RgName`" --name `"$deploymentName`" --template-file `"$BicepTemplate`""
+        foreach ($param in $Parameters) {
+            $cmd += " `"$param`""
+        }
+        
+        $result = Invoke-Expression $cmd | ConvertFrom-Json
+        
+        if ($result.properties.provisioningState -eq "Succeeded") {
+            Write-Success "Deployment completed successfully"
+            
+            # Display outputs
+            if ($result.properties.outputs) {
+                Write-Step "Deployment outputs:"
+                $result.properties.outputs | ConvertTo-Json -Depth 3 | Write-Host
+            }
+            
+            return $result
+        }
+        else {
+            Write-Error "Deployment failed with state: $($result.properties.provisioningState)"
+            throw "Deployment failed"
+        }
+    }
+    catch {
+        Write-Error "Deployment execution failed"
+        
+        # Try to get deployment details for troubleshooting
+        try {
+            Write-Step "Retrieving deployment details for troubleshooting..."
+            az deployment group show --resource-group $RgName --name $deploymentName --query "properties.error" --output json
+        }
+        catch {
+            Write-Warning "Could not retrieve deployment details"
+        }
+        
+        throw
+    }
+}
+
+function Show-DeploymentSummary {
+    param($DeploymentResult)
+    
+    Write-Header "Deployment Summary"
+    
+    Write-Host "Environment: " -NoNewline
+    Write-Host $Environment -ForegroundColor Green
+    
+    Write-Host "Resource Group: " -NoNewline
+    Write-Host $ResourceGroupName -ForegroundColor Green
+    
+    Write-Host "Location: " -NoNewline
+    Write-Host $Location -ForegroundColor Green
+    
+    Write-Host "Deployment State: " -NoNewline
+    Write-Host $DeploymentResult.properties.provisioningState -ForegroundColor Green
+    
+    if ($DeploymentResult.properties.outputs) {
+        Write-Host ""
+        Write-Host "Key Resources:" -ForegroundColor Cyan
+        
+        $outputs = $DeploymentResult.properties.outputs
+        
+        if ($outputs.functionAppName) {
+            Write-Host "  Function App: " -NoNewline
+            Write-Host $outputs.functionAppName.value -ForegroundColor Yellow
+        }
+        
+        if ($outputs.functionAppUrl) {
+            Write-Host "  Function App URL: " -NoNewline
+            Write-Host $outputs.functionAppUrl.value -ForegroundColor Yellow
+        }
+        
+        if ($outputs.webAppName) {
+            Write-Host "  Web App: " -NoNewline
+            Write-Host $outputs.webAppName.value -ForegroundColor Yellow
+        }
+        
+        if ($outputs.webAppUrl) {
+            Write-Host "  Web App URL: " -NoNewline
+            Write-Host $outputs.webAppUrl.value -ForegroundColor Yellow
+        }
+        
+        if ($outputs.cosmosAccountName) {
+            Write-Host "  Cosmos DB: " -NoNewline
+            Write-Host $outputs.cosmosAccountName.value -ForegroundColor Yellow
+        }
+        
+        if ($outputs.storageAccountName) {
+            Write-Host "  Storage Account: " -NoNewline
+            Write-Host $outputs.storageAccountName.value -ForegroundColor Yellow
+        }
+    }
+}
+
+# Main execution
+try {
+    Write-Header "Member Property Alert Infrastructure Deployment"
+    Write-Host "Environment: $Environment" -ForegroundColor Green
+    Write-Host "Location: $Location" -ForegroundColor Green
+    
+    if ($ValidateOnly) {
+        Write-Host "Mode: Validation Only" -ForegroundColor Yellow
+    }
+    elseif ($WhatIf) {
+        Write-Host "Mode: What-If Analysis" -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "Mode: Full Deployment" -ForegroundColor Green
+    }
+    
+    # Execute deployment steps
+    Test-Prerequisites
+    Set-AzureContext
+    
+    $rgName = Get-ResourceGroupName
+    Write-Host "Target Resource Group: $rgName" -ForegroundColor Green
+    
+    if (-not $ValidateOnly -and -not $WhatIf) {
+        New-ResourceGroup -RgName $rgName
+    }
+    
+    Test-BicepTemplate
+    $parameters = Get-DeploymentParameters -RgName $rgName
+    
+    Invoke-DeploymentValidation -RgName $rgName -Parameters $parameters
+    
+    if ($WhatIf) {
+        Invoke-WhatIfAnalysis -RgName $rgName -Parameters $parameters
+    }
+    elseif (-not $ValidateOnly) {
+        $deploymentResult = Invoke-Deployment -RgName $rgName -Parameters $parameters
+        Show-DeploymentSummary -DeploymentResult $deploymentResult
+    }
+    
+    Write-Header "Deployment Completed Successfully"
+    
+    if ($ValidateOnly) {
+        Write-Success "Validation completed successfully"
+    }
+    elseif ($WhatIf) {
+        Write-Success "What-If analysis completed successfully"
+    }
+    else {
+        Write-Success "Infrastructure deployment completed successfully"
+        Write-Host ""
+        Write-Host "Next steps:" -ForegroundColor Cyan
+        Write-Host "1. Deploy applications using GitHub Actions or manual deployment scripts"
+        Write-Host "2. Configure application settings and secrets"
+        Write-Host "3. Run health checks to verify deployment"
+    }
+}
+catch {
+    Write-Header "Deployment Failed"
+    Write-Error $_.Exception.Message
+    
+    Write-Host ""
+    Write-Host "Troubleshooting tips:" -ForegroundColor Yellow
+    Write-Host "1. Check Azure CLI authentication: az account show"
+    Write-Host "2. Verify subscription permissions"
+    Write-Host "3. Review Bicep template syntax: az bicep build --file $BicepTemplate"
+    Write-Host "4. Check parameter file format: $ParameterFile"
+    Write-Host "5. Review Azure Activity Log for detailed error messages"
+    
+    exit 1
 }
