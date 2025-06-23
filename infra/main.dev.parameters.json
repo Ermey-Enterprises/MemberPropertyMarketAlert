@@ -10,22 +10,6 @@
     },
     "appName": {
       "value": "member-property-alert"
-    },
-    "rentCastApiKey": {
-      "reference": {
-        "keyVault": {
-          "id": "/subscriptions/{subscription-id}/resourceGroups/{keyvault-rg}/providers/Microsoft.KeyVault/vaults/{keyvault-name}"
-        },
-        "secretName": "rentcast-api-key"
-      }
-    },
-    "adminApiKey": {
-      "reference": {
-        "keyVault": {
-          "id": "/subscriptions/{subscription-id}/resourceGroups/{keyvault-rg}/providers/Microsoft.KeyVault/vaults/{keyvault-name}"
-        },
-        "secretName": "admin-api-key"
-      }
     }
   }
 }

@@ -441,7 +441,8 @@ output functionAppUrl string = 'https://${functionApp.properties.defaultHostName
 output webAppName string = webApp.name
 output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
 output cosmosAccountName string = cosmosAccount.name
-output cosmosConnectionString string = cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString
+// Note: Connection string output removed to avoid exposing secrets in deployment outputs
+// Use Key Vault or managed identity for secure access to Cosmos DB
 output storageAccountName string = storageAccount.name
 output appInsightsName string = appInsights.name
 output appInsightsConnectionString string = appInsights.properties.ConnectionString

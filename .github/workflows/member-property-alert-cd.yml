@@ -258,19 +258,9 @@ jobs:
           
           echo "✅ Bicep template compiled successfully"
           
-          # Check if parameter file exists for environment
-          PARAM_FILE="infra/main.${ENV}.parameters.json"
-          PARAM_ARGS=""
-          if [ -f "$PARAM_FILE" ]; then
-            echo "📋 Using parameter file: $PARAM_FILE"
-            PARAM_ARGS="--parameters @${PARAM_FILE}"
-          else
-            echo "📋 Using inline parameters for environment: $ENV"
-            PARAM_ARGS="--parameters environment=$ENV location=$LOC"
-          fi
-          
-          # Add secrets as parameters
-          PARAM_ARGS="$PARAM_ARGS rentCastApiKey=${{ secrets.RENTCAST_API_KEY }} adminApiKey=${{ secrets.ADMIN_API_KEY }}"
+          # Use inline parameters only to avoid response stream conflicts
+          echo "📋 Using inline parameters for environment: $ENV"
+          PARAM_ARGS="--parameters environment=$ENV location=$LOC appName=member-property-alert rentCastApiKey=${{ secrets.RENTCAST_API_KEY }} adminApiKey=${{ secrets.ADMIN_API_KEY }}"
           
           # Validate deployment parameters before execution
           echo "🔍 Validating deployment parameters..."
