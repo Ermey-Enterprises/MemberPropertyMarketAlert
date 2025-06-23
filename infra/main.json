@@ -1,0 +1,546 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.36.1.42791",
+      "templateHash": "12538661378245575291"
+    }
+  },
+  "parameters": {
+    "environment": {
+      "type": "string",
+      "defaultValue": "dev",
+      "metadata": {
+        "description": "Environment name (dev, test, prod)"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources"
+      }
+    },
+    "appName": {
+      "type": "string",
+      "defaultValue": "member-property-alert",
+      "metadata": {
+        "description": "Application name prefix"
+      }
+    },
+    "rentCastApiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "RentCast API key for property data"
+      }
+    },
+    "adminApiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Admin API key for secure endpoints"
+      }
+    }
+  },
+  "variables": {
+    "uniqueSuffix": "[substring(uniqueString(resourceGroup().id), 0, 6)]",
+    "functionAppName": "[format('func-{0}-{1}', parameters('appName'), parameters('environment'))]",
+    "webAppName": "[format('web-{0}-{1}', parameters('appName'), parameters('environment'))]",
+    "storageAccountName": "[format('st{0}{1}{2}', replace(parameters('appName'), '-', ''), parameters('environment'), variables('uniqueSuffix'))]",
+    "cosmosAccountName": "[format('cosmos-{0}-{1}', parameters('appName'), parameters('environment'))]",
+    "appInsightsName": "[format('ai-{0}-{1}', parameters('appName'), parameters('environment'))]",
+    "logAnalyticsName": "[format('log-{0}-{1}', parameters('appName'), parameters('environment'))]",
+    "appServicePlanName": "[format('asp-{0}-{1}', parameters('appName'), parameters('environment'))]",
+    "commonTags": {
+      "Environment": "[parameters('environment')]",
+      "Application": "MemberPropertyAlert",
+      "ManagedBy": "Bicep",
+      "CostCenter": "IT"
+    }
+  },
+  "resources": {
+    "logAnalytics": {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('logAnalyticsName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": "[if(equals(parameters('environment'), 'prod'), 90, 30)]",
+        "features": {
+          "enableLogAccessUsingOnlyResourcePermissions": true
+        }
+      }
+    },
+    "appInsights": {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('appInsightsName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "kind": "web",
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+        "IngestionMode": "LogAnalytics",
+        "publicNetworkAccessForIngestion": "Enabled",
+        "publicNetworkAccessForQuery": "Enabled"
+      },
+      "dependsOn": [
+        "logAnalytics"
+      ]
+    },
+    "storageAccount": {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "sku": {
+        "name": "[if(equals(parameters('environment'), 'prod'), 'Standard_LRS', 'Standard_LRS')]"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "dnsEndpointType": "Standard",
+        "defaultToOAuthAuthentication": false,
+        "publicNetworkAccess": "Enabled",
+        "allowCrossTenantReplication": false,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "allowSharedKeyAccess": true,
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "virtualNetworkRules": [],
+          "ipRules": [],
+          "defaultAction": "Allow"
+        },
+        "supportsHttpsTrafficOnly": true,
+        "encryption": {
+          "requireInfrastructureEncryption": false,
+          "services": {
+            "file": {
+              "keyType": "Account",
+              "enabled": true
+            },
+            "blob": {
+              "keyType": "Account",
+              "enabled": true
+            }
+          },
+          "keySource": "Microsoft.Storage"
+        },
+        "accessTier": "Hot"
+      }
+    },
+    "cosmosAccount": {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2024-05-15",
+      "name": "[variables('cosmosAccountName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "kind": "GlobalDocumentDB",
+      "properties": {
+        "enableFreeTier": "[not(equals(parameters('environment'), 'prod'))]",
+        "databaseAccountOfferType": "Standard",
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session"
+        },
+        "locations": [
+          {
+            "locationName": "[parameters('location')]",
+            "failoverPriority": 0,
+            "isZoneRedundant": false
+          }
+        ],
+        "capabilities": [
+          {
+            "name": "EnableServerless"
+          }
+        ],
+        "backupPolicy": {
+          "type": "Periodic",
+          "periodicModeProperties": {
+            "backupIntervalInMinutes": "[if(equals(parameters('environment'), 'prod'), 240, 1440)]",
+            "backupRetentionIntervalInHours": "[if(equals(parameters('environment'), 'prod'), 720, 168)]",
+            "backupStorageRedundancy": "Local"
+          }
+        },
+        "networkAclBypass": "AzureServices",
+        "publicNetworkAccess": "Enabled",
+        "enableAnalyticalStorage": false,
+        "enablePartitionMerge": false,
+        "enableBurstCapacity": false,
+        "minimalTlsVersion": "Tls12"
+      }
+    },
+    "cosmosDatabase": {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}', variables('cosmosAccountName'), 'MemberPropertyAlert')]",
+      "properties": {
+        "resource": {
+          "id": "MemberPropertyAlert"
+        }
+      },
+      "dependsOn": [
+        "cosmosAccount"
+      ]
+    },
+    "institutionsContainer": {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosAccountName'), 'MemberPropertyAlert', 'Institutions')]",
+      "properties": {
+        "resource": {
+          "id": "Institutions",
+          "partitionKey": {
+            "paths": [
+              "/id"
+            ],
+            "kind": "Hash"
+          },
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "cosmosDatabase"
+      ]
+    },
+    "addressesContainer": {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosAccountName'), 'MemberPropertyAlert', 'Addresses')]",
+      "properties": {
+        "resource": {
+          "id": "Addresses",
+          "partitionKey": {
+            "paths": [
+              "/institutionId"
+            ],
+            "kind": "Hash"
+          },
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "cosmosDatabase"
+      ]
+    },
+    "alertsContainer": {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosAccountName'), 'MemberPropertyAlert', 'Alerts')]",
+      "properties": {
+        "resource": {
+          "id": "Alerts",
+          "partitionKey": {
+            "paths": [
+              "/institutionId"
+            ],
+            "kind": "Hash"
+          },
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "cosmosDatabase"
+      ]
+    },
+    "scanLogsContainer": {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosAccountName'), 'MemberPropertyAlert', 'ScanLogs')]",
+      "properties": {
+        "resource": {
+          "id": "ScanLogs",
+          "partitionKey": {
+            "paths": [
+              "/institutionId"
+            ],
+            "kind": "Hash"
+          },
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "cosmosDatabase"
+      ]
+    },
+    "appServicePlan": {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2023-12-01",
+      "name": "[variables('appServicePlanName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "sku": {
+        "name": "[if(equals(parameters('environment'), 'prod'), 'P1v3', 'B1')]",
+        "tier": "[if(equals(parameters('environment'), 'prod'), 'PremiumV3', 'Basic')]"
+      },
+      "kind": "linux",
+      "properties": {
+        "reserved": true
+      }
+    },
+    "functionApp": {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-12-01",
+      "name": "[variables('functionAppName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "kind": "functionapp,linux",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "reserved": true,
+        "isXenon": false,
+        "hyperV": false,
+        "vnetRouteAllEnabled": false,
+        "vnetImagePullEnabled": false,
+        "vnetContentShareEnabled": false,
+        "siteConfig": {
+          "numberOfWorkers": 1,
+          "linuxFxVersion": "DOTNET-ISOLATED|8.0",
+          "acrUseManagedIdentityCreds": false,
+          "alwaysOn": "[equals(parameters('environment'), 'prod')]",
+          "http20Enabled": false,
+          "functionAppScaleLimit": "[if(equals(parameters('environment'), 'prod'), 200, 10)]",
+          "minimumElasticInstanceCount": 0,
+          "use32BitWorkerProcess": false,
+          "ftpsState": "FtpsOnly",
+          "healthCheckPath": "/api/health",
+          "cors": {
+            "allowedOrigins": [
+              "https://portal.azure.com",
+              "[format('https://{0}.azurewebsites.net', variables('webAppName'))]"
+            ],
+            "supportCredentials": false
+          },
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageAccountName'), environment().suffixes.storage, listKeys('storageAccount', '2023-05-01').keys[0].value)]"
+            },
+            {
+              "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageAccountName'), environment().suffixes.storage, listKeys('storageAccount', '2023-05-01').keys[0].value)]"
+            },
+            {
+              "name": "WEBSITE_CONTENTSHARE",
+              "value": "[toLower(variables('functionAppName'))]"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "WEBSITE_NODE_DEFAULT_VERSION",
+              "value": "~18"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "dotnet-isolated"
+            },
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[reference('appInsights').ConnectionString]"
+            },
+            {
+              "name": "CosmosDb__ConnectionString",
+              "value": "[listConnectionStrings('cosmosAccount', '2024-05-15').connectionStrings[0].connectionString]"
+            },
+            {
+              "name": "CosmosDb__DatabaseName",
+              "value": "MemberPropertyAlert"
+            },
+            {
+              "name": "RentCast__ApiKey",
+              "value": "[parameters('rentCastApiKey')]"
+            },
+            {
+              "name": "RentCast__BaseUrl",
+              "value": "https://api.rentcast.io/v1"
+            },
+            {
+              "name": "AdminApiKey",
+              "value": "[parameters('adminApiKey')]"
+            },
+            {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "1"
+            }
+          ]
+        },
+        "httpsOnly": true,
+        "redundancyMode": "None",
+        "storageAccountRequired": false,
+        "keyVaultReferenceIdentity": "SystemAssigned"
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "appInsights",
+        "appServicePlan",
+        "cosmosAccount",
+        "cosmosDatabase",
+        "storageAccount"
+      ]
+    },
+    "webApp": {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-12-01",
+      "name": "[variables('webAppName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "kind": "app,linux",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "reserved": true,
+        "isXenon": false,
+        "hyperV": false,
+        "vnetRouteAllEnabled": false,
+        "vnetImagePullEnabled": false,
+        "vnetContentShareEnabled": false,
+        "siteConfig": {
+          "numberOfWorkers": 1,
+          "linuxFxVersion": "NODE|18-lts",
+          "acrUseManagedIdentityCreds": false,
+          "alwaysOn": "[equals(parameters('environment'), 'prod')]",
+          "http20Enabled": false,
+          "use32BitWorkerProcess": false,
+          "ftpsState": "FtpsOnly",
+          "healthCheckPath": "/health",
+          "appSettings": [
+            {
+              "name": "REACT_APP_API_BASE_URL",
+              "value": "[format('https://{0}/api', reference('functionApp').defaultHostName)]"
+            },
+            {
+              "name": "REACT_APP_ENVIRONMENT",
+              "value": "[parameters('environment')]"
+            },
+            {
+              "name": "WEBSITE_NODE_DEFAULT_VERSION",
+              "value": "18-lts"
+            },
+            {
+              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+              "value": "true"
+            },
+            {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "1"
+            }
+          ]
+        },
+        "httpsOnly": true,
+        "redundancyMode": "None",
+        "storageAccountRequired": false
+      },
+      "dependsOn": [
+        "appServicePlan",
+        "functionApp"
+      ]
+    }
+  },
+  "outputs": {
+    "functionAppName": {
+      "type": "string",
+      "value": "[variables('functionAppName')]"
+    },
+    "functionAppUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference('functionApp').defaultHostName)]"
+    },
+    "webAppName": {
+      "type": "string",
+      "value": "[variables('webAppName')]"
+    },
+    "webAppUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference('webApp').defaultHostName)]"
+    },
+    "cosmosAccountName": {
+      "type": "string",
+      "value": "[variables('cosmosAccountName')]"
+    },
+    "cosmosConnectionString": {
+      "type": "string",
+      "value": "[listConnectionStrings('cosmosAccount', '2024-05-15').connectionStrings[0].connectionString]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "value": "[variables('storageAccountName')]"
+    },
+    "appInsightsName": {
+      "type": "string",
+      "value": "[variables('appInsightsName')]"
+    },
+    "appInsightsConnectionString": {
+      "type": "string",
+      "value": "[reference('appInsights').ConnectionString]"
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "value": "[resourceGroup().name]"
+    }
+  }
+}
