@@ -229,9 +229,17 @@ jobs:
       - name: Deploy infrastructure
         id: deploy-infra
         run: |
+          set -euo pipefail
+          
           RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
           ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
           LOC="${{ env.AZURE_LOCATION }}"
+          
+          # Check required secrets
+          if [ -z "${{ secrets.RENTCAST_API_KEY }}" ] || [ -z "${{ secrets.ADMIN_API_KEY }}" ]; then
+            echo "❌ Required secrets RENTCAST_API_KEY or ADMIN_API_KEY are missing."
+            exit 1
+          fi
           
           echo "🏗️ Deploying infrastructure to resource group: $RG_NAME"
           
@@ -295,31 +303,36 @@ jobs:
           
           echo "✅ Infrastructure deployment completed successfully"
           
-          # Extract deployment outputs
+          # Extract deployment outputs using temporary file to avoid stream consumption issues
           echo "📤 Extracting deployment outputs..."
-          DEPLOYMENT_OUTPUTS=$(az deployment group show --resource-group "$RG_NAME" --name "$DEPLOYMENT_NAME" --query "properties.outputs" --output json 2>/dev/null)
+          DEPLOYMENT_OUTPUTS_FILE=$(mktemp)
+          az deployment group show --resource-group "$RG_NAME" --name "$DEPLOYMENT_NAME" --query "properties.outputs" --output json > "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null
           
           # Validate outputs exist and are valid JSON
-          if [ -z "$DEPLOYMENT_OUTPUTS" ] || [ "$DEPLOYMENT_OUTPUTS" == "null" ] || [ "$DEPLOYMENT_OUTPUTS" == "{}" ]; then
+          if [ ! -s "$DEPLOYMENT_OUTPUTS_FILE" ]; then
             echo "❌ Failed to retrieve deployment outputs or outputs are empty"
+            rm -f "$DEPLOYMENT_OUTPUTS_FILE"
             exit 1
           fi
           
           # Test JSON validity
-          echo "$DEPLOYMENT_OUTPUTS" | jq . > /dev/null 2>&1
-          if [ $? -ne 0 ]; then
+          if ! jq . "$DEPLOYMENT_OUTPUTS_FILE" > /dev/null 2>&1; then
             echo "❌ Deployment outputs are not valid JSON"
-            echo "Raw outputs: $DEPLOYMENT_OUTPUTS"
+            echo "Raw outputs: $(cat "$DEPLOYMENT_OUTPUTS_FILE")"
+            rm -f "$DEPLOYMENT_OUTPUTS_FILE"
             exit 1
           fi
           
           echo "✅ Deployment outputs retrieved successfully"
           
-          # Extract specific outputs
-          FUNCTION_APP_NAME=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.functionAppName.value // empty' 2>/dev/null)
-          WEB_APP_NAME=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.webAppName.value // empty' 2>/dev/null)
-          FUNCTION_APP_URL=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.functionAppUrl.value // empty' 2>/dev/null)
-          WEB_APP_URL=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.webAppUrl.value // empty' 2>/dev/null)
+          # Extract specific outputs from file
+          FUNCTION_APP_NAME=$(jq -r '.functionAppName.value // empty' "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null)
+          WEB_APP_NAME=$(jq -r '.webAppName.value // empty' "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null)
+          FUNCTION_APP_URL=$(jq -r '.functionAppUrl.value // empty' "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null)
+          WEB_APP_URL=$(jq -r '.webAppUrl.value // empty' "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null)
+          
+          # Clean up temporary file
+          rm -f "$DEPLOYMENT_OUTPUTS_FILE"
           
           if [ -n "$FUNCTION_APP_NAME" ] && [ "$FUNCTION_APP_NAME" != "null" ]; then
             echo "function-app-name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
