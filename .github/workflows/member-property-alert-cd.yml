@@ -87,7 +87,6 @@ jobs:
           echo "🎯 Deployment plan:"
           echo "  Environment: $DEPLOY_ENV"
           echo "  Resource Group: $RG_NAME"
-
   build-and-test:
     runs-on: ubuntu-latest
     needs: [analyze-changes]
@@ -121,7 +120,8 @@ jobs:
       - name: Build and test .NET solution
         run: |
           echo "🏗️ Building Member Property Alert solution..."
-          dotnet restore MemberPropertyMarketAlert.sln --no-cache          dotnet build MemberPropertyMarketAlert.sln --no-restore --configuration Release
+          dotnet restore MemberPropertyMarketAlert.sln --no-cache
+          dotnet build MemberPropertyMarketAlert.sln --no-restore --configuration Release
           
           # Run tests if test projects exist
           if find . -name "*.Tests.csproj" -o -name "*Test*.csproj" | grep -q .; then
