@@ -12,6 +12,14 @@ Before using CI/CD, configure these GitHub repository secrets:
 
 **Setup Location**: GitHub Repo → Settings → Secrets and variables → Actions
 
+### ✅ **CI/CD Status (Latest Test)**
+- **Azure Authentication**: ✅ WORKING - Secrets properly configured
+- **Build .NET Backend**: ✅ WORKING - All warnings only
+- **Build React UI**: ❌ FAILING - npm ci issues (investigating)
+- **Infrastructure Deployment**: ⏳ PENDING - Blocked by UI build
+
+**Next Steps**: Fix React UI build or temporarily disable UI build to test infrastructure deployment.
+
 ## 📋 Project Overview
 
 **Member Property Market Alert** is a cloud-based service that monitors residential property listings to alert financial institutions when their members' homes are listed for sale, enabling proactive loan origination opportunities.

@@ -121,8 +121,7 @@ jobs:
       - name: Build and test .NET solution
         run: |
           echo "🏗️ Building Member Property Alert solution..."
-          dotnet restore MemberPropertyMarketAlert.sln --no-cache
-          dotnet build MemberPropertyMarketAlert.sln --no-restore --configuration Release
+          dotnet restore MemberPropertyMarketAlert.sln --no-cache          dotnet build MemberPropertyMarketAlert.sln --no-restore --configuration Release
           
           # Run tests if test projects exist
           if find . -name "*.Tests.csproj" -o -name "*Test*.csproj" | grep -q .; then
@@ -137,7 +136,15 @@ jobs:
         run: |
           echo "🎨 Building React UI..."
           cd src/MemberPropertyAlert.UI
-          npm ci --silent
+          
+          # Use npm install since there's no package-lock.json
+          if [ -f "package-lock.json" ]; then
+            echo "📦 Installing dependencies with npm ci..."
+            npm ci --silent
+          else
+            echo "📦 Installing dependencies with npm install..."
+            npm install --silent
+          fi
           
           # Run tests if they exist
           if [ -f "package.json" ] && grep -q '"test"' package.json; then
