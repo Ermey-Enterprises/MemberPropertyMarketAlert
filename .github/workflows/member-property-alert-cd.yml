@@ -532,15 +532,27 @@ jobs:
           echo "🔍 =============================================="
           echo "📅 Validation Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           
+          # Check if UI directory exists
+          if [ ! -d "src/MemberPropertyAlert.UI" ]; then
+            echo "❌ UI directory not found: src/MemberPropertyAlert.UI"
+            echo "🔍 Available directories in src/:"
+            ls -la src/ || echo "src directory not accessible"
+            exit 1
+          fi
+          
+          # Check package.json
           if [ ! -f "src/MemberPropertyAlert.UI/package.json" ]; then
-            echo "❌ package.json not found at expected path: src/MemberPropertyAlert.UI/package.json"
+            echo "❌ package.json not found at: src/MemberPropertyAlert.UI/package.json"
             echo "🔍 Available files in src/MemberPropertyAlert.UI/:"
             ls -la src/MemberPropertyAlert.UI/ || echo "Directory not accessible"
             exit 1
           fi
           
+          # Check src directory
           if [ ! -d "src/MemberPropertyAlert.UI/src" ]; then
             echo "❌ React src directory not found at: src/MemberPropertyAlert.UI/src"
+            echo "🔍 Available directories in src/MemberPropertyAlert.UI/:"
+            ls -la src/MemberPropertyAlert.UI/ || echo "Directory not accessible"
             exit 1
           fi
           
@@ -548,6 +560,13 @@ jobs:
           echo "📂 Project files:"
           echo "  - package.json: $(du -sh src/MemberPropertyAlert.UI/package.json | cut -f1)"
           echo "  - src directory: $(du -sh src/MemberPropertyAlert.UI/src | cut -f1)"
+          
+          # Log additional structure info for debugging
+          echo "🔍 Detailed structure:"
+          echo "  UI Directory contents:"
+          ls -la src/MemberPropertyAlert.UI/ | head -10
+          echo "  React src contents:"
+          ls -la src/MemberPropertyAlert.UI/src/ | head -10
           echo "=============================================="
 
       - name: Build React UI with comprehensive logging
