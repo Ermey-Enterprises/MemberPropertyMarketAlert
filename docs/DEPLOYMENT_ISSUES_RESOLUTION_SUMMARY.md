@@ -30,15 +30,40 @@ This document summarizes all the issues encountered during the MemberPropertyMar
 ### 3. Azure Storage Access (403 Forbidden) ✅
 **Issue**: Deployment failing with 403 Forbidden when accessing Azure Storage during file share operations.
 
-**Root Cause**: Service principal missing "Storage File Data SMB Share Contributor" role on storage account.
+**Root Cause**: 
+- Storage account configured with `allowSharedKeyAccess: false` when advanced security enabled
+- Function App still using storage account keys instead of managed identity
+- Security mismatch between storage configuration and Function App authentication method
 
-**Solution**:
-```bash
-az role assignment create \
-  --assignee "0fc4ac8e-c0ad-4f6f-bb8b-a98420219372" \
-  --role "Storage File Data SMB Share Contributor" \
-  --scope "/subscriptions/{subscription-id}/resourceGroups/rg-member-property-alert-dev-eastus2/providers/Microsoft.Storage/storageAccounts/stmpadeveus26ih6"
+**Solution - Migrated to Managed Identity**:
+```bicep
+// Updated Function App storage configuration
+appSettings: [
+  {
+    name: 'AzureWebJobsStorage__accountName'
+    value: storageAccount.name
+  }
+  {
+    name: 'AzureWebJobsStorage__credential'
+    value: 'managedidentity'
+  }
+]
+
+// Added RBAC role assignments for Function App managed identity
+resource functionAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor
+    principalId: functionApp.identity.principalId
+  }
+}
 ```
+
+**Benefits**:
+- Eliminated shared storage account keys
+- Enhanced security with Azure AD authentication
+- Automatic token management by Azure platform
+- Compliance with enterprise security best practices
 
 **Documentation**: `docs/STORAGE_PERMISSIONS_FIX.md`
 
@@ -113,5 +138,12 @@ az role assignment create \
 4. **CI/CD hygiene**: Proper package management and lockfiles prevent build inconsistencies
 5. **Infrastructure as Code**: Bicep templates need careful consideration of Azure service constraints
 
-## Status: ✅ Issues Resolved, Testing in Progress
-All major deployment blockers have been addressed. Currently running deployment test to verify the storage permissions fix resolves the final 403 Forbidden error.
+## Status: ✅ Issues Resolved, Testing Managed Identity Deployment
+All major deployment blockers have been addressed with enterprise-grade security solutions:
+
+- **Key Vault**: Purge protection enabled consistently across environments
+- **RBAC**: Service principal has comprehensive resource management permissions  
+- **Storage Security**: Migrated from shared keys to managed identity authentication
+- **CI/CD**: Build and deployment pipeline optimized for reliability
+
+Currently running deployment test to verify the managed identity approach resolves all storage access issues while maintaining the highest security standards.

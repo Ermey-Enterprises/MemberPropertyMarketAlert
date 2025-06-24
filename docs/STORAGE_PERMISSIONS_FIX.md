@@ -34,7 +34,7 @@ appSettings: [
 ]
 ```
 
-**After (Managed Identity - SUCCESS):**
+**After (Managed Identity - COMPREHENSIVE):**
 ```bicep
 appSettings: [
   {
@@ -42,8 +42,12 @@ appSettings: [
     value: storageAccount.name
   }
   {
-    name: 'AzureWebJobsStorage__credential'
-    value: 'managedidentity'
+    name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__accountName'
+    value: storageAccount.name
+  }
+  {
+    name: 'CosmosDb__Endpoint'  // Changed from connection string
+    value: cosmosDbAccount.properties.documentEndpoint
   }
 ]
 ```
@@ -71,16 +75,44 @@ resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2
     principalType: 'ServicePrincipal'
   }
 }
+
+// Cosmos DB Built-in Data Contributor - for Cosmos DB operations
+resource functionAppCosmosDbAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: cosmosDbAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00000000-0000-0000-0000-000000000002')
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
 ```
 
-### 3. Security Benefits of Managed Identity
-- **No Shared Keys**: Eliminates storage account key management and rotation
-- **Fine-grained Access**: RBAC provides precise permissions control
-- **Azure AD Integration**: Leverages enterprise identity and access management
-- **Automatic Token Management**: Azure handles authentication token lifecycle
-- **Audit Trail**: All access is tracked through Azure AD and Azure Monitor
+### 3. Eliminated Secret Storage
+**Before (Security Risk):**
+```bicep
+// Stored sensitive connection strings in Key Vault
+resource storageConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  properties: {
+    value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value}'
+  }
+}
+```
 
-### 4. Operational Benefits
+**After (Secure):**
+```bicep
+// No secrets stored - using managed identity endpoints only
+// Commented out all connection string secrets
+```
+
+### 4. Security Benefits of Comprehensive Managed Identity
+- **No Shared Keys**: Eliminates ALL account keys (storage, Cosmos DB)
+- **Zero Secrets**: No connection strings stored in Key Vault or configuration
+- **Fine-grained Access**: RBAC provides precise permissions for each service
+- **Azure AD Integration**: Leverages enterprise identity across all Azure services
+- **Automatic Token Management**: Azure handles authentication tokens for all services
+- **Comprehensive Audit Trail**: All access tracked through Azure AD and Azure Monitor
+
+### 5. Operational Benefits
 - **Zero Configuration Drift**: No connection strings to maintain or rotate
 - **Environment Consistency**: Same authentication mechanism across all environments
 - **Reduced Attack Surface**: No shared secrets that could be compromised

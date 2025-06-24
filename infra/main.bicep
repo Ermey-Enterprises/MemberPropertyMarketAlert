@@ -478,16 +478,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
           value: storageAccount.name
         }
         {
-          name: 'AzureWebJobsStorage__credential'
-          value: 'managedidentity'
-        }
-        {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__accountName'
           value: storageAccount.name
-        }
-        {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__credential'
-          value: 'managedidentity'
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
@@ -510,8 +502,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
           value: applicationInsights.properties.ConnectionString
         }
         {
-          name: 'CosmosDb__ConnectionString'
-          value: cosmosDbAccount.listConnectionStrings().connectionStrings[0].connectionString
+          name: 'CosmosDb__Endpoint'
+          value: cosmosDbAccount.properties.documentEndpoint
         }
         {
           name: 'CosmosDb__DatabaseName'
@@ -643,23 +635,25 @@ resource applicationInsightsConnectionStringSecret 'Microsoft.KeyVault/vaults/se
   }
 }
 
-resource cosmosConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
-  name: 'COSMOS-CONNECTION-STRING'
-  properties: {
-    value: cosmosDbAccount.listConnectionStrings().connectionStrings[0].connectionString
-    contentType: 'text/plain'
-  }
-}
+// Remove Cosmos DB connection string secret - using managed identity instead
+// resource cosmosConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+//   parent: keyVault
+//   name: 'COSMOS-CONNECTION-STRING'
+//   properties: {
+//     value: cosmosDbAccount.listConnectionStrings().connectionStrings[0].connectionString
+//     contentType: 'text/plain'
+//   }
+// }
 
-resource storageConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
-  name: 'STORAGE-CONNECTION-STRING'
-  properties: {
-    value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}'
-    contentType: 'text/plain'
-  }
-}
+// Remove storage connection string secret - using managed identity instead
+// resource storageConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+//   parent: keyVault
+//   name: 'STORAGE-CONNECTION-STRING'
+//   properties: {
+//     value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}'
+//     contentType: 'text/plain'
+//   }
+// }
 
 resource rentCastApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(rentCastApiKey)) {
   parent: keyVault
@@ -744,6 +738,16 @@ resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb') // Storage File Data SMB Share Contributor
+    principalId: deployFunctionApp ? functionApp.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource functionAppCosmosDbAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+  name: guid(cosmosDbAccount.id, resourceNames.functionApp, 'Cosmos DB Built-in Data Contributor')
+  scope: cosmosDbAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00000000-0000-0000-0000-000000000002') // Cosmos DB Built-in Data Contributor
     principalId: deployFunctionApp ? functionApp.identity.principalId : ''
     principalType: 'ServicePrincipal'
   }

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.36.1.42791",
-      "templateHash": "18266192829051093088"
+      "templateHash": "16590167809419781463"
     }
   },
   "parameters": {
@@ -529,16 +529,8 @@
               "value": "[variables('resourceNames').storageAccount]"
             },
             {
-              "name": "AzureWebJobsStorage__credential",
-              "value": "managedidentity"
-            },
-            {
               "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__accountName",
               "value": "[variables('resourceNames').storageAccount]"
-            },
-            {
-              "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__credential",
-              "value": "managedidentity"
             },
             {
               "name": "WEBSITE_CONTENTSHARE",
@@ -561,8 +553,8 @@
               "value": "[reference(resourceId('Microsoft.Insights/components', variables('resourceNames').applicationInsights), '2020-02-02').ConnectionString]"
             },
             {
-              "name": "CosmosDb__ConnectionString",
-              "value": "[listConnectionStrings(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), '2024-05-15').connectionStrings[0].connectionString]"
+              "name": "CosmosDb__Endpoint",
+              "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), '2024-05-15').documentEndpoint]"
             },
             {
               "name": "CosmosDb__DatabaseName",
@@ -707,32 +699,6 @@
       ]
     },
     {
-      "type": "Microsoft.KeyVault/vaults/secrets",
-      "apiVersion": "2023-07-01",
-      "name": "[format('{0}/{1}', variables('resourceNames').keyVault, 'COSMOS-CONNECTION-STRING')]",
-      "properties": {
-        "value": "[listConnectionStrings(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), '2024-05-15').connectionStrings[0].connectionString]",
-        "contentType": "text/plain"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb)]",
-        "[resourceId('Microsoft.KeyVault/vaults', variables('resourceNames').keyVault)]"
-      ]
-    },
-    {
-      "type": "Microsoft.KeyVault/vaults/secrets",
-      "apiVersion": "2023-07-01",
-      "name": "[format('{0}/{1}', variables('resourceNames').keyVault, 'STORAGE-CONNECTION-STRING')]",
-      "properties": {
-        "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix={2}', variables('resourceNames').storageAccount, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount), '2023-05-01').keys[0].value, environment().suffixes.storage)]",
-        "contentType": "text/plain"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('resourceNames').keyVault)]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount)]"
-      ]
-    },
-    {
       "condition": "[not(empty(parameters('rentCastApiKey')))]",
       "type": "Microsoft.KeyVault/vaults/secrets",
       "apiVersion": "2023-07-01",
@@ -859,6 +825,22 @@
       "dependsOn": [
         "[resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp)]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount)]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployFunctionApp')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.DocumentDB/databaseAccounts/{0}', variables('resourceNames').cosmosDb)]",
+      "name": "[guid(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), variables('resourceNames').functionApp, 'Cosmos DB Built-in Data Contributor')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00000000-0000-0000-0000-000000000002')]",
+        "principalId": "[if(parameters('deployFunctionApp'), reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId, '')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb)]",
+        "[resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp)]"
       ]
     }
   ],
