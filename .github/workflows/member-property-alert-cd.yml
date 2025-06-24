@@ -85,10 +85,26 @@ jobs:
           else
             echo "🔄 Automatic deployment - analyzing changes"
             
-            INFRA_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^infra/main\.bicep|^\.github/workflows/member-property-alert-cd\.yml' | wc -l)
-            FUNCTIONS_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^src/MemberPropertyAlert\.(Core|Functions)/' | wc -l)
-            UI_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^src/MemberPropertyAlert\.UI/' | wc -l)
+            # Get list of changed files
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            echo "📁 Changed files:"
+            echo "$CHANGED_FILES" | sed 's/^/  /'
             
+            # Infrastructure changes
+            INFRA_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^infra/main\.bicep|^\.github/workflows/member-property-alert-cd\.yml' | wc -l)
+            
+            # Functions changes (Core and Functions projects)
+            FUNCTIONS_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^src/MemberPropertyAlert\.(Core|Functions)/' | wc -l)
+            
+            # UI changes - broader detection including all UI project files
+            UI_PROJECT_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^src/MemberPropertyAlert\.UI/' | wc -l)
+            UI_SOURCE_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^src/MemberPropertyAlert\.UI/src/' | wc -l)
+            UI_CONFIG_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^src/MemberPropertyAlert\.UI/(Program\.cs|.*\.csproj|package\.json|package-lock\.json|tailwind\.config\.js)' | wc -l)
+            
+            # UI is considered changed if ANY UI project file changed
+            UI_CHANGED=$UI_PROJECT_CHANGED
+            
+            # Set outputs
             [ "$INFRA_CHANGED" -gt 0 ] && echo "infra-changed=true" >> $GITHUB_OUTPUT || echo "infra-changed=false" >> $GITHUB_OUTPUT
             [ "$FUNCTIONS_CHANGED" -gt 0 ] && echo "functions-changed=true" >> $GITHUB_OUTPUT || echo "functions-changed=false" >> $GITHUB_OUTPUT
             [ "$UI_CHANGED" -gt 0 ] && echo "ui-changed=true" >> $GITHUB_OUTPUT || echo "ui-changed=false" >> $GITHUB_OUTPUT
@@ -96,7 +112,16 @@ jobs:
             echo "📊 Changes detected:"
             echo "  Infrastructure: $INFRA_CHANGED files"
             echo "  Functions: $FUNCTIONS_CHANGED files"
-            echo "  UI: $UI_CHANGED files"
+            echo "  UI Project: $UI_PROJECT_CHANGED files"
+            echo "    - UI Source: $UI_SOURCE_CHANGED files"
+            echo "    - UI Config: $UI_CONFIG_CHANGED files"
+            echo "  UI Changed (final): $UI_CHANGED files"
+            
+            # Show specific UI changes for debugging
+            if [ "$UI_CHANGED" -gt 0 ]; then
+              echo "🎨 UI files changed:"
+              echo "$CHANGED_FILES" | grep -E '^src/MemberPropertyAlert\.UI/' | sed 's/^/  /'
+            fi
           fi
       
       - name: Set deployment flags
@@ -480,7 +505,7 @@ jobs:
   deploy-web-app:
     runs-on: ubuntu-latest
     needs: [analyze-changes, build-and-test, deploy-infrastructure]
-    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.ui-changed == 'true' && needs.analyze-changes.outputs.deploy-web-app == 'true'
+    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.ui-changed == 'true' && needs.analyze-changes.outputs.deploy-web-app == 'true' && (needs.deploy-infrastructure.result == 'success' || needs.deploy-infrastructure.result == 'skipped')
     steps:
       - name: Initialize Web App deployment
         run: |
