@@ -101,9 +101,20 @@ $ParamString = $ParamString.Trim()
 
 Write-Host "✅ Test parameters prepared" -ForegroundColor Green
 
+# Clear Azure CLI and Bicep caches before testing
+Write-Host "🔧 Clearing Azure CLI and Bicep caches..." -ForegroundColor Cyan
+try {
+    az cache purge --verbose 2>$null
+    az bicep upgrade --target-version latest --verbose 2>$null
+    az config set bicep.use_binary_from_path=false --verbose 2>$null
+    Write-Host "✅ Caches cleared successfully" -ForegroundColor Green
+} catch {
+    Write-Warning "⚠️ Cache clearing encountered issues (non-critical): $_"
+}
+
 # Test what-if deployment (this is what the CI/CD pipeline will do)
-Write-Host "🔍 Running what-if analysis..." -ForegroundColor Cyan
-Write-Host "  Command: az deployment group what-if --resource-group $ResourceGroupName --template-file $BicepFile --parameters $ParamString --result-format FullResourcePayloads" -ForegroundColor Gray
+Write-Host "🔍 Running what-if analysis with enhanced debugging..." -ForegroundColor Cyan
+Write-Host "  Command: az deployment group what-if --resource-group $ResourceGroupName --template-file $BicepFile --parameters $ParamString --result-format FullResourcePayloads --verbose --debug --only-show-errors" -ForegroundColor Gray
 
 try {
     # Create temporary files for capturing output
@@ -116,6 +127,9 @@ try {
         --template-file $BicepFile `
         --parameters $ParamString `
         --result-format FullResourcePayloads `
+        --verbose `
+        --debug `
+        --only-show-errors `
         --output json 2>$whatIfErrorFile
     
     $whatIfExitCode = $LASTEXITCODE

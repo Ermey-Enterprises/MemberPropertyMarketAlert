@@ -185,15 +185,39 @@ function New-ResourceGroup {
     }
 }
 
+function Clear-AzureCache {
+    Write-Step "Clearing Azure CLI and Bicep caches..."
+    
+    try {
+        # Clear Azure CLI cache
+        az cache purge --verbose 2>$null
+        Write-Success "Azure CLI cache cleared"
+        
+        # Clear Bicep cache and ensure latest version
+        az bicep upgrade --target-version latest --verbose 2>$null
+        az config set bicep.use_binary_from_path=false --verbose 2>$null
+        Write-Success "Bicep cache cleared and updated"
+    }
+    catch {
+        Write-Warning "Cache clearing encountered issues (non-critical): $_"
+    }
+}
+
 function Test-BicepTemplate {
     Write-Step "Validating Bicep template..."
     
     try {
-        az bicep build --file $BicepTemplate
+        # Clear caches before compilation
+        Clear-AzureCache
+        
+        # Compile with verbose and debug output
+        Write-Host "Executing: az bicep build --file `"$BicepTemplate`" --verbose --debug" -ForegroundColor Gray
+        az bicep build --file $BicepTemplate --verbose --debug
         Write-Success "Bicep template compiled successfully"
     }
     catch {
         Write-Error "Bicep template compilation failed"
+        Write-Host "Debug: Check Bicep syntax and dependencies" -ForegroundColor Red
         throw
     }
 }
@@ -241,19 +265,61 @@ function Invoke-DeploymentValidation {
         [string[]]$Parameters
     )
     
-    Write-Step "Validating deployment parameters..."
+    Write-Step "Validating deployment parameters with enhanced debugging..."
     
     try {
-        $cmd = "az deployment group validate --resource-group `"$RgName`" --template-file `"$BicepTemplate`""
+        # Clear cache before validation
+        Write-Host "Clearing cache before validation..." -ForegroundColor Gray
+        az cache purge --verbose 2>$null
+        
+        $cmd = "az deployment group validate --resource-group `"$RgName`" --template-file `"$BicepTemplate`" --verbose --debug --only-show-errors"
         foreach ($param in $Parameters) {
             $cmd += " `"$param`""
         }
         
-        Invoke-Expression $cmd | Out-Null
-        Write-Success "Deployment validation succeeded"
+        Write-Host "Executing: $cmd" -ForegroundColor Gray
+        
+        # Capture both stdout and stderr for debug analysis
+        $validationOutput = [System.IO.Path]::GetTempFileName()
+        $validationError = [System.IO.Path]::GetTempFileName()
+        
+        $result = Invoke-Expression "$cmd > `"$validationOutput`" 2>`"$validationError`""
+        $exitCode = $LASTEXITCODE
+        
+        if ($exitCode -eq 0) {
+            Write-Success "Deployment validation succeeded"
+            
+            # Display validation output if available
+            if (Test-Path $validationOutput) {
+                $output = Get-Content $validationOutput -Raw
+                if ($output -and $output.Trim()) {
+                    Write-Host "Validation output:" -ForegroundColor Gray
+                    Write-Host $output -ForegroundColor Gray
+                }
+            }
+        }
+        else {
+            Write-Error "Deployment validation failed with exit code: $exitCode"
+            
+            # Display detailed error information
+            if (Test-Path $validationError) {
+                $errorContent = Get-Content $validationError -Raw
+                if ($errorContent) {
+                    Write-Host "Validation error details:" -ForegroundColor Red
+                    Write-Host $errorContent -ForegroundColor Red
+                }
+            }
+            
+            throw "Validation failed"
+        }
+        
+        # Clean up temporary files
+        Remove-Item $validationOutput -ErrorAction SilentlyContinue
+        Remove-Item $validationError -ErrorAction SilentlyContinue
     }
     catch {
-        Write-Error "Deployment validation failed"
+        Write-Error "Deployment validation failed: $_"
+        Write-Host "Debug: Check template syntax, parameters, and Azure permissions" -ForegroundColor Red
         throw
     }
 }
@@ -264,19 +330,61 @@ function Invoke-WhatIfAnalysis {
         [string[]]$Parameters
     )
     
-    Write-Step "Running What-If analysis..."
+    Write-Step "Running What-If analysis with enhanced debugging..."
     
     try {
-        $cmd = "az deployment group what-if --resource-group `"$RgName`" --template-file `"$BicepTemplate`""
+        # Clear cache before what-if analysis
+        Write-Host "Clearing cache before what-if analysis..." -ForegroundColor Gray
+        az cache purge --verbose 2>$null
+        
+        $cmd = "az deployment group what-if --resource-group `"$RgName`" --template-file `"$BicepTemplate`" --verbose --debug --only-show-errors --result-format FullResourcePayloads"
         foreach ($param in $Parameters) {
             $cmd += " `"$param`""
         }
         
-        Invoke-Expression $cmd
-        Write-Success "What-If analysis completed"
+        Write-Host "Executing: $cmd" -ForegroundColor Gray
+        
+        # Capture output for analysis
+        $whatIfOutput = [System.IO.Path]::GetTempFileName()
+        $whatIfError = [System.IO.Path]::GetTempFileName()
+        
+        $result = Invoke-Expression "$cmd > `"$whatIfOutput`" 2>`"$whatIfError`""
+        $exitCode = $LASTEXITCODE
+        
+        if ($exitCode -eq 0) {
+            Write-Success "What-If analysis completed successfully"
+            
+            # Display what-if results
+            if (Test-Path $whatIfOutput) {
+                $output = Get-Content $whatIfOutput -Raw
+                if ($output -and $output.Trim()) {
+                    Write-Host "What-If analysis results:" -ForegroundColor Cyan
+                    Write-Host $output -ForegroundColor Gray
+                }
+            }
+        }
+        else {
+            Write-Error "What-If analysis failed with exit code: $exitCode"
+            
+            # Display detailed error information
+            if (Test-Path $whatIfError) {
+                $errorContent = Get-Content $whatIfError -Raw
+                if ($errorContent) {
+                    Write-Host "What-If error details:" -ForegroundColor Red
+                    Write-Host $errorContent -ForegroundColor Red
+                }
+            }
+            
+            throw "What-If analysis failed"
+        }
+        
+        # Clean up temporary files
+        Remove-Item $whatIfOutput -ErrorAction SilentlyContinue
+        Remove-Item $whatIfError -ErrorAction SilentlyContinue
     }
     catch {
-        Write-Error "What-If analysis failed"
+        Write-Error "What-If analysis failed: $_"
+        Write-Host "Debug: Check template syntax, parameters, and resource group permissions" -ForegroundColor Red
         throw
     }
 }
@@ -288,43 +396,122 @@ function Invoke-Deployment {
     )
     
     $deploymentName = "member-property-alert-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    Write-Step "Starting deployment: $deploymentName"
+    Write-Step "Starting deployment with enhanced debugging: $deploymentName"
     
     try {
-        $cmd = "az deployment group create --resource-group `"$RgName`" --name `"$deploymentName`" --template-file `"$BicepTemplate`""
+        # Clear cache before deployment
+        Write-Host "Clearing cache before deployment..." -ForegroundColor Gray
+        az cache purge --verbose 2>$null
+        
+        $cmd = "az deployment group create --resource-group `"$RgName`" --name `"$deploymentName`" --template-file `"$BicepTemplate`" --verbose --debug --only-show-errors"
         foreach ($param in $Parameters) {
             $cmd += " `"$param`""
         }
         
-        $result = Invoke-Expression $cmd | ConvertFrom-Json
+        Write-Host "Executing: $cmd" -ForegroundColor Gray
+        Write-Host "Deployment start time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" -ForegroundColor Gray
         
-        if ($result.properties.provisioningState -eq "Succeeded") {
-            Write-Success "Deployment completed successfully"
-            
-            # Display outputs
-            if ($result.properties.outputs) {
-                Write-Step "Deployment outputs:"
-                $result.properties.outputs | ConvertTo-Json -Depth 3 | Write-Host
+        # Capture deployment output for analysis
+        $deploymentOutput = [System.IO.Path]::GetTempFileName()
+        $deploymentError = [System.IO.Path]::GetTempFileName()
+        
+        $result = Invoke-Expression "$cmd > `"$deploymentOutput`" 2>`"$deploymentError`""
+        $exitCode = $LASTEXITCODE
+        
+        Write-Host "Deployment end time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" -ForegroundColor Gray
+        Write-Host "Deployment exit code: $exitCode" -ForegroundColor Gray
+        
+        if ($exitCode -eq 0) {
+            # Parse deployment result
+            if (Test-Path $deploymentOutput) {
+                $outputContent = Get-Content $deploymentOutput -Raw
+                if ($outputContent -and $outputContent.Trim()) {
+                    try {
+                        $deploymentResult = $outputContent | ConvertFrom-Json
+                        
+                        if ($deploymentResult.properties.provisioningState -eq "Succeeded") {
+                            Write-Success "Deployment completed successfully"
+                            
+                            # Display outputs
+                            if ($deploymentResult.properties.outputs) {
+                                Write-Step "Deployment outputs:"
+                                $deploymentResult.properties.outputs | ConvertTo-Json -Depth 3 | Write-Host
+                            }
+                            
+                            # Clean up temporary files
+                            Remove-Item $deploymentOutput -ErrorAction SilentlyContinue
+                            Remove-Item $deploymentError -ErrorAction SilentlyContinue
+                            
+                            return $deploymentResult
+                        }
+                        else {
+                            Write-Error "Deployment failed with state: $($deploymentResult.properties.provisioningState)"
+                            
+                            # Display error details if available
+                            if ($deploymentResult.properties.error) {
+                                Write-Host "Deployment error details:" -ForegroundColor Red
+                                $deploymentResult.properties.error | ConvertTo-Json -Depth 3 | Write-Host -ForegroundColor Red
+                            }
+                            
+                            throw "Deployment failed"
+                        }
+                    }
+                    catch {
+                        Write-Warning "Could not parse deployment output as JSON: $_"
+                        Write-Host "Raw deployment output:" -ForegroundColor Gray
+                        Write-Host $outputContent -ForegroundColor Gray
+                        throw "Deployment result parsing failed"
+                    }
+                }
+                else {
+                    Write-Warning "No deployment output received"
+                    throw "Empty deployment output"
+                }
             }
-            
-            return $result
+            else {
+                Write-Warning "Deployment output file not found"
+                throw "Missing deployment output"
+            }
         }
         else {
-            Write-Error "Deployment failed with state: $($result.properties.provisioningState)"
-            throw "Deployment failed"
+            Write-Error "Deployment failed with exit code: $exitCode"
+            
+            # Display detailed error information
+            if (Test-Path $deploymentError) {
+                $errorContent = Get-Content $deploymentError -Raw
+                if ($errorContent) {
+                    Write-Host "Deployment error details:" -ForegroundColor Red
+                    Write-Host $errorContent -ForegroundColor Red
+                }
+            }
+            
+            # Try to get additional deployment details for troubleshooting
+            try {
+                Write-Step "Retrieving deployment details for troubleshooting..."
+                Write-Host "Executing: az deployment group show --resource-group `"$RgName`" --name `"$deploymentName`" --query properties.error --output json --verbose --debug" -ForegroundColor Gray
+                az deployment group show --resource-group $RgName --name $deploymentName --query "properties.error" --output json --verbose --debug
+                
+                Write-Host "Executing: az deployment operation group list --resource-group `"$RgName`" --name `"$deploymentName`" --query [?properties.provisioningState=='Failed'] --output table --verbose" -ForegroundColor Gray
+                az deployment operation group list --resource-group $RgName --name $deploymentName --query "[?properties.provisioningState=='Failed']" --output table --verbose
+            }
+            catch {
+                Write-Warning "Could not retrieve additional deployment details: $_"
+            }
+            
+            throw "Deployment execution failed"
         }
+        
+        # Clean up temporary files
+        Remove-Item $deploymentOutput -ErrorAction SilentlyContinue
+        Remove-Item $deploymentError -ErrorAction SilentlyContinue
     }
     catch {
-        Write-Error "Deployment execution failed"
+        Write-Error "Deployment execution failed: $_"
+        Write-Host "Debug: Check Azure permissions, resource quotas, and template parameters" -ForegroundColor Red
         
-        # Try to get deployment details for troubleshooting
-        try {
-            Write-Step "Retrieving deployment details for troubleshooting..."
-            az deployment group show --resource-group $RgName --name $deploymentName --query "properties.error" --output json
-        }
-        catch {
-            Write-Warning "Could not retrieve deployment details"
-        }
+        # Clean up temporary files in case of exception
+        Remove-Item $deploymentOutput -ErrorAction SilentlyContinue
+        Remove-Item $deploymentError -ErrorAction SilentlyContinue
         
         throw
     }

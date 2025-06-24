@@ -294,9 +294,17 @@ jobs:
           echo "  Environment: $ENV"
           echo "  Deployment Name: $DEPLOYMENT_NAME"
           
+          # Clear Azure CLI and Bicep caches before deployment
+          echo "🔧 Clearing Azure CLI and Bicep caches..."
+          az cache purge --verbose 2>/dev/null || echo "Cache purge completed with warnings"
+          az bicep upgrade --target-version latest --verbose 2>/dev/null || echo "Bicep upgrade completed with warnings"
+          az config set bicep.use_binary_from_path=false --verbose 2>/dev/null || echo "Bicep config set completed with warnings"
+          echo "✅ Caches cleared and Bicep updated"
+          
           # Validate Bicep template before deployment
-          echo "🔍 Validating Bicep template..."
-          az bicep build --file infra/main.bicep
+          echo "🔍 Validating Bicep template with enhanced debugging..."
+          echo "  Command: az bicep build --file infra/main.bicep --verbose --debug"
+          az bicep build --file infra/main.bicep --verbose --debug
           if [ $? -ne 0 ]; then
             echo "❌ Bicep template compilation failed"
             exit 1
@@ -309,8 +317,8 @@ jobs:
           PARAM_ARGS="--parameters environment=$ENV location=$LOC appName=member-property-alert rentCastApiKey=${{ secrets.RENTCAST_API_KEY }} adminApiKey=${{ secrets.ADMIN_API_KEY }}"
           
           # Use what-if for validation to avoid response stream conflicts
-          echo "🔍 Validating deployment with what-if analysis..."
-          echo "  Command: az deployment group what-if --resource-group $RG_NAME --template-file infra/main.bicep $PARAM_ARGS --result-format FullResourcePayloads"
+          echo "🔍 Validating deployment with what-if analysis (enhanced debugging)..."
+          echo "  Command: az deployment group what-if --resource-group $RG_NAME --template-file infra/main.bicep $PARAM_ARGS --result-format FullResourcePayloads --verbose --debug --only-show-errors"
           
           # Capture what-if output for debugging
           WHATIF_OUTPUT_FILE=$(mktemp)
@@ -318,7 +326,10 @@ jobs:
             --resource-group "$RG_NAME" \
             --template-file infra/main.bicep \
             $PARAM_ARGS \
-            --result-format FullResourcePayloads > "$WHATIF_OUTPUT_FILE" 2>&1
+            --result-format FullResourcePayloads \
+            --verbose \
+            --debug \
+            --only-show-errors > "$WHATIF_OUTPUT_FILE" 2>&1
           
           WHATIF_EXIT_CODE=$?
           echo "  What-if exit code: $WHATIF_EXIT_CODE"
@@ -337,6 +348,9 @@ jobs:
               --resource-group "$RG_NAME" \
               --template-file infra/main.bicep \
               $PARAM_ARGS \
+              --verbose \
+              --debug \
+              --only-show-errors \
               --no-wait > "$VALIDATE_OUTPUT_FILE" 2>&1
             
             VALIDATE_EXIT_CODE=$?
