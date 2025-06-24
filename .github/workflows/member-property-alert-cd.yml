@@ -21,7 +21,7 @@ on:
       debug_mode:
         description: 'Enable enhanced debug logging'
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -317,7 +317,7 @@ jobs:
           echo "📅 Verification Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           
           echo "🔍 .NET Version Information:"
-          dotnet --version --verbose || dotnet --version
+          dotnet --version
           
           echo "🔍 .NET Runtime Information:"
           dotnet --info
@@ -329,7 +329,7 @@ jobs:
           dotnet --list-runtimes
           
           echo "🔍 NuGet Configuration:"
-          dotnet nuget list source --verbose || echo "NuGet sources not available"
+          dotnet nuget list source || echo "NuGet sources not available"
           
           echo "=============================================="
       
@@ -432,7 +432,7 @@ jobs:
             echo "  Solution Size: $(du -sh MemberPropertyMarketAlert.sln | cut -f1)"
             
             echo "🔍 Projects in Solution:"
-            dotnet sln MemberPropertyMarketAlert.sln list --verbose
+            dotnet sln MemberPropertyMarketAlert.sln list
           else
             echo "  ❌ Solution file not found"
             exit 1
