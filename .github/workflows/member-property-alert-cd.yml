@@ -87,6 +87,7 @@ jobs:
 
       - name: Checkout repository with verbose logging
         uses: actions/checkout@v4
+
         with:
           fetch-depth: 2
           
@@ -518,8 +519,40 @@ jobs:
           echo "📅 Test End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo "=============================================="
       
+      - name: Validate React project structure
+        if: needs.analyze-changes.outputs.ui-changed == 'true'
+        run: |
+          set -euo pipefail
+          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
+            set -x
+          fi
+          
+          echo "🔍 =============================================="
+          echo "🔍 REACT PROJECT STRUCTURE VALIDATION"
+          echo "🔍 =============================================="
+          echo "📅 Validation Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          
+          if [ ! -f "src/MemberPropertyAlert.UI/package.json" ]; then
+            echo "❌ package.json not found at expected path: src/MemberPropertyAlert.UI/package.json"
+            echo "🔍 Available files in src/MemberPropertyAlert.UI/:"
+            ls -la src/MemberPropertyAlert.UI/ || echo "Directory not accessible"
+            exit 1
+          fi
+          
+          if [ ! -d "src/MemberPropertyAlert.UI/src" ]; then
+            echo "❌ React src directory not found at: src/MemberPropertyAlert.UI/src"
+            exit 1
+          fi
+          
+          echo "✅ React project structure validated successfully"
+          echo "📂 Project files:"
+          echo "  - package.json: $(du -sh src/MemberPropertyAlert.UI/package.json | cut -f1)"
+          echo "  - src directory: $(du -sh src/MemberPropertyAlert.UI/src | cut -f1)"
+          echo "=============================================="
+
       - name: Build React UI with comprehensive logging
         if: needs.analyze-changes.outputs.ui-changed == 'true'
+        working-directory: src/MemberPropertyAlert.UI
         run: |
           set -euo pipefail
           if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
@@ -530,8 +563,6 @@ jobs:
           echo "🎨 REACT UI BUILD PROCESS"
           echo "🎨 =============================================="
           echo "📅 UI Build Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          cd src/MemberPropertyAlert.UI
           
           # Log UI project structure
           echo "📂 UI Project Structure:"
@@ -1173,7 +1204,6 @@ jobs:
           WHATIF_EXIT_CODE=$?
           echo "  What-if exit code: $WHATIF_EXIT_CODE"
           
-          WHATIF_END=$(date +%s)
           WHATIF_DURATION=$((WHATIF_END - WHATIF_START))
           
           if [ $WHATIF_EXIT_CODE -ne 0 ]; then
@@ -1851,30 +1881,18 @@ jobs:
             
             echo "  Health endpoint: HTTP $HEALTH_STATUS (${HEALTH_TIME}s)"
             
-            if [[ "$HEALTH_STATUS" == 200 ]]; then
-              echo "✅ Function App healthy: $HEALTH_STATUS"
+            if [[ "$HEALTH_STATUS" == "200" ]]; then
+              echo "✅ Function App health check passed"
               break
-            fi
-            
-            # Test root endpoint as fallback
-            ROOT_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL" --max-time 15 --connect-timeout 10 || echo "000")
-            ROOT_TIME=$(curl -s -L -o /dev/null -w '%{time_total}' "$APP_URL" --max-time 15 --connect-timeout 10 || echo "0")
-            
-            echo "  Root endpoint: HTTP $ROOT_STATUS (${ROOT_TIME}s)"
-            
-            if [[ "$ROOT_STATUS" == 200 || "$ROOT_STATUS" == 404 ]]; then
-              echo "✅ Function App responding: $ROOT_STATUS"
-              break
-            fi
-            
-            if [[ $i -eq 6 ]]; then
-              echo "⚠️ Function App still warming up after 6 attempts"
-              echo "   Health: $HEALTH_STATUS, Root: $ROOT_STATUS"
-              echo "   This is normal for new deployments - the service should be available shortly"
-              echo "   URL: $APP_URL"
+            elif [[ "$HEALTH_STATUS" == "000" ]]; then
+              echo "⚠️ Connection failed - Function App may still be starting"
             else
-              echo "⏳ Waiting 10 seconds before next attempt..."
-              sleep 10
+              echo "⚠️ Health check returned HTTP $HEALTH_STATUS"
+            fi
+            
+            if [ $i -lt 6 ]; then
+              echo "⏳ Waiting 30 seconds before next attempt..."
+              sleep 30
             fi
           done
           
@@ -1882,9 +1900,9 @@ jobs:
           HEALTH_CHECK_DURATION=$((HEALTH_CHECK_END - HEALTH_CHECK_START))
           
           echo "📅 Function Test End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "⏱️ Total health check duration: ${HEALTH_CHECK_DURATION}s"
+          echo "⏱️ Total health check time: ${HEALTH_CHECK_DURATION}s"
           echo "=============================================="
-      
+
       - name: Test Web App with comprehensive logging
         if: needs.analyze-changes.outputs.ui-changed == 'true' && needs.deploy-web-app.result == 'success'
         run: |
@@ -1916,33 +1934,24 @@ jobs:
           for i in {1..6}; do
             echo "🔍 Health check attempt $i/6 at $(date -u '+%H:%M:%S UTC')..."
             
-            # Test main endpoint
-            MAIN_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL" --max-time 15 --connect-timeout 10 || echo "000")
-            MAIN_TIME=$(curl -s -L -o /dev/null -w '%{time_total}' "$APP_URL" --max-time 15 --connect-timeout 10 || echo "0")
+            # Test main page
+            HEALTH_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL" --max-time 15 --connect-timeout 10 || echo "000")
+            HEALTH_TIME=$(curl -s -L -o /dev/null -w '%{time_total}' "$APP_URL" --max-time 15 --connect-timeout 10 || echo "0")
             
-            echo "  Main endpoint: HTTP $MAIN_STATUS (${MAIN_TIME}s)"
+            echo "  Main page: HTTP $HEALTH_STATUS (${HEALTH_TIME}s)"
             
-            if [[ "$MAIN_STATUS" == 200 ]]; then
-              echo "✅ Web App responding: $MAIN_STATUS"
-              
-              # Test for basic HTML content
-              CONTENT_CHECK=$(curl -s -L "$APP_URL" --max-time 15 | grep -i "html\|<!DOCTYPE" | wc -l || echo "0")
-              if [[ "$CONTENT_CHECK" -gt 0 ]]; then
-                echo "✅ Web App serving HTML content"
-              else
-                echo "⚠️ Web App responding but content may not be HTML"
-              fi
+            if [[ "$HEALTH_STATUS" == "200" ]]; then
+              echo "✅ Web App health check passed"
               break
+            elif [[ "$HEALTH_STATUS" == "000" ]]; then
+              echo "⚠️ Connection failed - Web App may still be starting"
+            else
+              echo "⚠️ Health check returned HTTP $HEALTH_STATUS"
             fi
             
-            if [[ $i -eq 6 ]]; then
-              echo "⚠️ Web App still warming up after 6 attempts"
-              echo "   Status: $MAIN_STATUS"
-              echo "   This is normal for new deployments - the service should be available shortly"
-              echo "   URL: $APP_URL"
-            else
-              echo "⏳ Waiting 10 seconds before next attempt..."
-              sleep 10
+            if [ $i -lt 6 ]; then
+              echo "⏳ Waiting 30 seconds before next attempt..."
+              sleep 30
             fi
           done
           
@@ -1950,7 +1959,7 @@ jobs:
           HEALTH_CHECK_DURATION=$((HEALTH_CHECK_END - HEALTH_CHECK_START))
           
           echo "📅 Web Test End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "⏱️ Total health check duration: ${HEALTH_CHECK_DURATION}s"
+          echo "⏱️ Total health check time: ${HEALTH_CHECK_DURATION}s"
           echo "=============================================="
 
       - name: Generate test summary
@@ -1962,7 +1971,7 @@ jobs:
           fi
           
           echo "📊 =============================================="
-          echo "📊 TEST RESULTS SUMMARY GENERATION"
+          echo "📊 DEPLOYMENT TEST SUMMARY"
           echo "📊 =============================================="
           
           # Create test results summary
@@ -1970,13 +1979,14 @@ jobs:
           {
             "summary": {
               "timestamp": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')",
+              "environment": "${{ needs.analyze-changes.outputs.deploy-environment }}",
               "function_app_tested": "${{ needs.analyze-changes.outputs.functions-changed }}",
               "web_app_tested": "${{ needs.analyze-changes.outputs.ui-changed }}",
-              "overall_status": "completed"
+              "overall_status": "success"
             },
-            "environment": {
-              "deploy_env": "${{ needs.analyze-changes.outputs.deploy-environment }}",
-              "resource_group": "${{ needs.analyze-changes.outputs.resource-group-name }}"
+            "results": {
+              "function_app_health": "${{ needs.analyze-changes.outputs.functions-changed }}",
+              "web_app_health": "${{ needs.analyze-changes.outputs.ui-changed }}"
             }
           }
           EOF
@@ -1986,7 +1996,7 @@ jobs:
           TEST_RESULTS_COMPRESSED=$(echo "$TEST_RESULTS" | jq -c .)
           echo "results=$TEST_RESULTS_COMPRESSED" >> $GITHUB_OUTPUT
           
-          echo "✅ Test results summary generated successfully"
+          echo "✅ Deployment test summary generated successfully"
           echo "=============================================="
 
   deployment-summary:
@@ -2004,99 +2014,99 @@ jobs:
           echo "📋 =============================================="
           echo "📋 COMPREHENSIVE DEPLOYMENT SUMMARY"
           echo "📋 =============================================="
-          echo "📅 Summary Generation: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "📅 Summary Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "🎯 Environment: ${{ needs.analyze-changes.outputs.deploy-environment }}"
+          echo "📂 Resource Group: ${{ needs.analyze-changes.outputs.resource-group-name }}"
+          echo "🌍 Azure Location: ${{ env.AZURE_LOCATION }}"
           
-          echo "# 🚀 Member Property Alert Deployment Summary"
-          echo ""
-          echo "## 📊 Deployment Results"
-          echo "- **Environment**: ${{ needs.analyze-changes.outputs.deploy-environment }}"
-          echo "- **Resource Group**: ${{ needs.analyze-changes.outputs.resource-group-name }}"
-          echo "- **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo ""
+          echo "📊 Workflow Execution Summary:"
+          echo "  Workflow: ${{ github.workflow }}"
+          echo "  Run ID: ${{ github.run_id }}"
+          echo "  Run Number: ${{ github.run_number }}"
+          echo "  Actor: ${{ github.actor }}"
+          echo "  Event: ${{ github.event_name }}"
+          echo "  Ref: ${{ github.ref }}"
+          echo "  SHA: ${{ github.sha }}"
           
-          # Infrastructure deployment status
-          if [[ "${{ needs.analyze-changes.outputs.infra-changed }}" == "true" ]]; then
-            if [[ "${{ needs.deploy-infrastructure.result }}" == "success" ]]; then
-              echo "- ✅ **Infrastructure**: Successfully deployed"
-              if [ -n "${{ needs.deploy-infrastructure.outputs.function-app-url }}" ]; then
-                echo "  - Function App URL: ${{ needs.deploy-infrastructure.outputs.function-app-url }}"
-              fi
-              if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-url }}" ]; then
-                echo "  - Web App URL: ${{ needs.deploy-infrastructure.outputs.web-app-url }}"
-              fi
-            else
-              echo "- ❌ **Infrastructure**: Deployment failed"
+          echo "🔍 Change Analysis Results:"
+          echo "  Infrastructure Changed: ${{ needs.analyze-changes.outputs.infra-changed }}"
+          echo "  Functions Changed: ${{ needs.analyze-changes.outputs.functions-changed }}"
+          echo "  UI Changed: ${{ needs.analyze-changes.outputs.ui-changed }}"
+          
+          echo "🏗️ Job Execution Results:"
+          echo "  Analyze Changes: ${{ needs.analyze-changes.result }}"
+          echo "  Build and Test: ${{ needs.build-and-test.result }}"
+          echo "  Deploy Infrastructure: ${{ needs.deploy-infrastructure.result }}"
+          echo "  Deploy Function App: ${{ needs.deploy-function-app.result }}"
+          echo "  Deploy Web App: ${{ needs.deploy-web-app.result }}"
+          echo "  Test Deployments: ${{ needs.test-deployments.result }}"
+          
+          echo "🎯 Deployment Targets:"
+          if [ "${{ needs.deploy-infrastructure.result }}" == "success" ]; then
+            echo "  ✅ Infrastructure: Deployed successfully"
+            if [ -n "${{ needs.deploy-infrastructure.outputs.function-app-name }}" ]; then
+              echo "    Function App: ${{ needs.deploy-infrastructure.outputs.function-app-name }}"
+              echo "    Function URL: ${{ needs.deploy-infrastructure.outputs.function-app-url }}"
             fi
+            if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-name }}" ]; then
+              echo "    Web App: ${{ needs.deploy-infrastructure.outputs.web-app-name }}"
+              echo "    Web URL: ${{ needs.deploy-infrastructure.outputs.web-app-url }}"
+            fi
+          elif [ "${{ needs.analyze-changes.outputs.infra-changed }}" == "true" ]; then
+            echo "  ❌ Infrastructure: Deployment failed"
           else
-            echo "- ⏭️ **Infrastructure**: Skipped (no changes)"
+            echo "  ⏭️ Infrastructure: Skipped (no changes)"
           fi
           
-          # Function App deployment status
-          if [[ "${{ needs.analyze-changes.outputs.functions-changed }}" == "true" ]]; then
-            if [[ "${{ needs.deploy-function-app.result }}" == "success" ]]; then
-              echo "- ✅ **Function App**: Successfully deployed"
-              echo "  - Business Logic: Azure Functions (.NET 8 Isolated)"
-              echo "  - Runtime: Serverless compute"
-            else
-              echo "- ❌ **Function App**: Deployment failed"
-            fi
+          if [ "${{ needs.deploy-function-app.result }}" == "success" ]; then
+            echo "  ✅ Function App: Deployed successfully"
+          elif [ "${{ needs.analyze-changes.outputs.functions-changed }}" == "true" ]; then
+            echo "  ❌ Function App: Deployment failed"
           else
-            echo "- ⏭️ **Function App**: Skipped (no changes)"
+            echo "  ⏭️ Function App: Skipped (no changes)"
           fi
           
-          # Web App deployment status
-          if [[ "${{ needs.analyze-changes.outputs.ui-changed }}" == "true" ]]; then
-            if [[ "${{ needs.deploy-web-app.result }}" == "success" ]]; then
-              echo "- ✅ **Web App**: Successfully deployed"
-              echo "  - Frontend: React SPA"
-              echo "  - Hosting: Azure App Service"
-            else
-              echo "- ❌ **Web App**: Deployment failed"
-            fi
+          if [ "${{ needs.deploy-web-app.result }}" == "success" ]; then
+            echo "  ✅ Web App: Deployed successfully"
+          elif [ "${{ needs.analyze-changes.outputs.ui-changed }}" == "true" ]; then
+            echo "  ❌ Web App: Deployment failed"
           else
-            echo "- ⏭️ **Web App**: Skipped (no changes)"
+            echo "  ⏭️ Web App: Skipped (no changes)"
           fi
           
-          # Testing results
-          if [[ "${{ needs.test-deployments.result }}" == "success" ]]; then
-            echo "- ✅ **Health Tests**: All deployed services tested successfully"
+          if [ "${{ needs.test-deployments.result }}" == "success" ]; then
+            echo "  ✅ Deployment Tests: Passed"
+          elif [ "${{ needs.test-deployments.result }}" == "failure" ]; then
+            echo "  ❌ Deployment Tests: Failed"
+          else
+            echo "  ⏭️ Deployment Tests: Skipped"
+          fi
+          
+          # Determine overall status
+          OVERALL_STATUS="success"
+          if [[ "${{ needs.build-and-test.result }}" == "failure" ]]; then
+            OVERALL_STATUS="failure"
+            echo "🚨 Overall Status: FAILED (Build and Test)"
+          elif [[ "${{ needs.analyze-changes.outputs.infra-changed }}" == "true" && "${{ needs.deploy-infrastructure.result }}" == "failure" ]]; then
+            OVERALL_STATUS="failure"
+            echo "🚨 Overall Status: FAILED (Infrastructure Deployment)"
+          elif [[ "${{ needs.analyze-changes.outputs.functions-changed }}" == "true" && "${{ needs.deploy-function-app.result }}" == "failure" ]]; then
+            OVERALL_STATUS="failure"
+            echo "🚨 Overall Status: FAILED (Function App Deployment)"
+          elif [[ "${{ needs.analyze-changes.outputs.ui-changed }}" == "true" && "${{ needs.deploy-web-app.result }}" == "failure" ]]; then
+            OVERALL_STATUS="failure"
+            echo "🚨 Overall Status: FAILED (Web App Deployment)"
           elif [[ "${{ needs.test-deployments.result }}" == "failure" ]]; then
-            echo "- ❌ **Health Tests**: Some health checks failed"
+            OVERALL_STATUS="warning"
+            echo "⚠️ Overall Status: SUCCESS WITH WARNINGS (Deployment Tests Failed)"
           else
-            echo "- ⏭️ **Health Tests**: Skipped (no deployments to test)"
+            echo "✅ Overall Status: SUCCESS"
           fi
           
-          echo ""
-          echo "## 🏗️ Architecture Overview"
-          echo "- **Function App**: Azure Functions (.NET 8 Isolated) for serverless API endpoints"
-          echo "- **Web App**: React SPA hosted on Azure App Service for user interface"
-          echo "- **Database**: Azure Cosmos DB (Serverless) for document storage"
-          echo "- **Storage**: Azure Storage Account for blob and queue storage"
-          echo "- **Monitoring**: Application Insights for telemetry and logging"
-          echo "- **Security**: Managed Identity and Key Vault integration"
-          echo ""
-          echo "## 🔧 Enhanced Logging Features"
-          echo "- **Comprehensive Debug Logging**: All operations include verbose output"
-          echo "- **Performance Timing**: Step-by-step execution timing"
-          echo "- **Error Context**: Detailed error information with troubleshooting guidance"
-          echo "- **Artifact Traceability**: Complete build and deployment artifact tracking"
-          echo "- **Health Monitoring**: Enhanced health checks with retry logic"
-          echo "- **Security Auditing**: Secure secret handling with audit trails"
-          echo ""
-          echo "## 📈 Performance Metrics"
-          echo "- **Build Phase**: Optimized with enhanced caching and parallel execution"
-          echo "- **Deployment Phase**: Streamlined with comprehensive error handling"
-          echo "- **Testing Phase**: Automated health checks with detailed reporting"
-          echo "- **Monitoring**: Real-time performance and health monitoring"
-          echo ""
-          echo "## 🎯 Industry Standards Compliance"
-          echo "- **Verbose Logging**: All operations include detailed debug output"
-          echo "- **Error Handling**: Comprehensive error capture and recovery"
-          echo "- **Security**: Industry-standard secret management and authentication"
-          echo "- **Monitoring**: Complete observability with structured logging"
-          echo "- **Performance**: Optimized build and deployment pipelines"
-          echo "- **Reliability**: Robust retry mechanisms and health checks"
-          echo ""
-          echo "🎉 **Member Property Alert deployment completed with industry-standard logging!**"
-          echo ""
+          echo "📅 Deployment Complete: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo "=============================================="
+          
+          # Set final status for potential downstream workflows
+          if [[ "$OVERALL_STATUS" == "failure" ]]; then
+            exit 1
+          fi
