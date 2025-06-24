@@ -235,10 +235,19 @@ jobs:
           ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
           LOC="${{ env.AZURE_LOCATION }}"
           
-          # Check required secrets
-          if [ -z "${{ secrets.RENTCAST_API_KEY }}" ] || [ -z "${{ secrets.ADMIN_API_KEY }}" ]; then
-            echo "❌ Required secrets RENTCAST_API_KEY or ADMIN_API_KEY are missing."
+          # Check if secrets are configured (but allow placeholder values)
+          if [ -z "${{ secrets.RENTCAST_API_KEY }}" ]; then
+            echo "❌ RENTCAST_API_KEY secret is not configured in GitHub repository settings."
             exit 1
+          elif [ "${{ secrets.RENTCAST_API_KEY }}" = "placeholder" ] || [ "${{ secrets.RENTCAST_API_KEY }}" = "PLACEHOLDER" ]; then
+            echo "⚠️ RENTCAST_API_KEY is set to placeholder value - deployment will continue but API functionality may be limited."
+          fi
+          
+          if [ -z "${{ secrets.ADMIN_API_KEY }}" ]; then
+            echo "❌ ADMIN_API_KEY secret is not configured in GitHub repository settings."
+            exit 1
+          elif [ "${{ secrets.ADMIN_API_KEY }}" = "placeholder" ] || [ "${{ secrets.ADMIN_API_KEY }}" = "PLACEHOLDER" ]; then
+            echo "⚠️ ADMIN_API_KEY is set to placeholder value - deployment will continue but admin functionality may be limited."
           fi
           
           echo "🏗️ Deploying infrastructure to resource group: $RG_NAME"
