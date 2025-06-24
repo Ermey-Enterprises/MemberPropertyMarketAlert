@@ -266,10 +266,6 @@ FakesAssemblies/
 .ntvs_analysis.dat
 node_modules/
 
-# React build output
-build/
-dist/
-
 # Visual Studio 6 build log
 *.plg
 

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Trash2, Download, Filter } from 'lucide-react';
+import { Trash2, Download } from 'lucide-react';
 
 const LogViewer = ({ logs, onClearLogs, isConnected }) => {
   const logContainerRef = useRef(null);

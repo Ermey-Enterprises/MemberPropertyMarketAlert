@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Building, Settings, Bell, Globe, Mail, FileText, Webhook } from 'lucide-react';
+import { Plus, Trash2, Building } from 'lucide-react';
 import axios from 'axios';
 
 const InstitutionManager = () => {
   const [institutions, setInstitutions] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [editingInstitution, setEditingInstitution] = useState(null);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [selectedInstitution, setSelectedInstitution] = useState(null);
   const [newInstitution, setNewInstitution] = useState({
     name: '',
     contactEmail: '',
@@ -99,10 +96,6 @@ const InstitutionManager = () => {
     }
   };
 
-  const openSettingsModal = (institution) => {
-    setSelectedInstitution(institution);
-    setShowSettingsModal(true);
-  };
 
   const resetNewInstitution = () => {
     setNewInstitution({
@@ -162,16 +155,6 @@ const InstitutionManager = () => {
     });
   };
 
-  const updateInstitutionSettings = async (settings) => {
-    try {
-      await axios.put(`/api/institutions/${selectedInstitution.id}`, settings);
-      setShowSettingsModal(false);
-      setSelectedInstitution(null);
-      loadInstitutions();
-    } catch (error) {
-      console.error('Failed to update institution settings:', error);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -267,20 +250,6 @@ const InstitutionManager = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <button 
-                        onClick={() => openSettingsModal(institution)}
-                        className="p-2 text-gray-500 hover:text-blue-600"
-                        title="Institution Settings"
-                      >
-                        <Settings size={16} />
-                      </button>
-                      <button 
-                        onClick={() => setEditingInstitution(institution)}
-                        className="p-2 text-gray-500 hover:text-green-600"
-                        title="Edit Institution"
-                      >
-                        <Edit size={16} />
-                      </button>
                       <button 
                         onClick={() => deleteInstitution(institution.id)}
                         className="p-2 text-gray-500 hover:text-red-600"
