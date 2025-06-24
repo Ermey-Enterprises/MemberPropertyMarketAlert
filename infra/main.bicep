@@ -474,12 +474,20 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
       }
       appSettings: [
         {
-          name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}'
+          name: 'AzureWebJobsStorage__accountName'
+          value: storageAccount.name
         }
         {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}'
+          name: 'AzureWebJobsStorage__credential'
+          value: 'managedidentity'
+        }
+        {
+          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__accountName'
+          value: storageAccount.name
+        }
+        {
+          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__credential'
+          value: 'managedidentity'
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
@@ -615,6 +623,16 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
   }
 }
 
+resource webAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
+  name: guid(storageAccount.id, resourceNames.webApp, 'Storage Blob Data Contributor')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
+    principalId: deployWebApp ? webApp.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // Key Vault Secrets
 resource applicationInsightsConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
@@ -706,6 +724,27 @@ resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-0
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
     principalId: deployWebApp ? webApp.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// RBAC Role Assignments for Storage Account access with managed identity
+resource functionAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+  name: guid(storageAccount.id, resourceNames.functionApp, 'Storage Blob Data Contributor')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
+    principalId: deployFunctionApp ? functionApp.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+  name: guid(storageAccount.id, resourceNames.functionApp, 'Storage File Data SMB Share Contributor')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb') // Storage File Data SMB Share Contributor
+    principalId: deployFunctionApp ? functionApp.identity.principalId : ''
     principalType: 'ServicePrincipal'
   }
 }
