@@ -6,7 +6,10 @@ Fixed the Azure deployment error: "Required parameter WEBSITE_CONTENTAZUREFILECO
 
 ## Root Cause
 
-The Function App was configured to use managed identity syntax for storage connection strings, but Azure Functions requires actual connection strings for critical infrastructure settings:
+The Function App was configured to use managed identity syntax for storage connection strings, but Azure Functions requires actual connection strings for critical infrastructure settings.
+
+**Additional Issue Discovered:**
+The storage account had `allowSharedKeyAccess: false` from a previous deployment where advanced security was enabled, but Function Apps require shared key access for infrastructure operations.
 
 **Problematic Configuration:**
 ```bicep
@@ -20,12 +23,21 @@ The Function App was configured to use managed identity syntax for storage conne
 }
 ```
 
-**The Issue:**
-- Azure Functions **requires** actual connection strings for `AzureWebJobsStorage` and `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING`
-- The managed identity syntax (`__accountName`) doesn't work for these specific Function App infrastructure settings
-- These are core Azure Functions runtime requirements, not application-level configurations
+**The Issues:**
+1. Azure Functions **requires** actual connection strings for `AzureWebJobsStorage` and `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING`
+2. The managed identity syntax (`__accountName`) doesn't work for these specific Function App infrastructure settings
+3. **CRITICAL**: Storage account had `allowSharedKeyAccess: false`, blocking all account key usage
+4. These are core Azure Functions runtime requirements, not application-level configurations
 
-## Solution Implemented: Hybrid Approach
+## Solution Implemented: Hybrid Approach with Storage Fix
+
+### **Critical Storage Account Fix**
+Enable shared key access required for Function App infrastructure:
+```bicep
+properties: {
+  allowSharedKeyAccess: true  // Required for Azure Functions infrastructure
+}
+```
 
 ### **Function App Infrastructure (Connection Strings)**
 For Azure Functions runtime requirements:
@@ -222,3 +234,15 @@ This hybrid approach resolves the Function App deployment issue by:
 - **Ensuring reliable deployments** with proper dependency management
 
 The Function App should now deploy successfully and start without connection string errors, while maintaining enterprise-grade security through the hybrid approach.
+
+## Critical Storage Account Issue:
+```bicep
+// Storage account blocked shared key access
+properties: {
+  allowSharedKeyAccess: !enableAdvancedSecurity  // Was false when enableAdvancedSecurity = true
+}
+```
+
+**The Issues:**
+- Function Apps require shared key access for infrastructure operations, but the storage account had `allowSharedKeyAccess: false` due to previous advanced security settings.
+- This prevents the Function App from accessing the storage account using the required shared key authentication, leading to deployment and runtime errors.

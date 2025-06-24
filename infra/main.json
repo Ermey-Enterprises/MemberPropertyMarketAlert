@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.36.1.42791",
-      "templateHash": "69299607317366303"
+      "templateHash": "9672182854553811422"
     }
   },
   "parameters": {
@@ -867,14 +867,12 @@
     },
     {
       "condition": "[parameters('deployFunctionApp')]",
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.DocumentDB/databaseAccounts/{0}', variables('resourceNames').cosmosDb)]",
-      "name": "[guid(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), variables('resourceNames').functionApp, 'Cosmos DB Built-in Data Contributor')]",
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}', variables('resourceNames').cosmosDb, guid(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), variables('resourceNames').functionApp, 'Cosmos DB Built-in Data Contributor'))]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00000000-0000-0000-0000-000000000002')]",
-        "principalId": "[if(parameters('deployFunctionApp'), reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId, '')]",
-        "principalType": "ServicePrincipal"
+        "roleDefinitionId": "[format('{0}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002', resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb))]",
+        "principalId": "[if(parameters('deployFunctionApp'), reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId, '')]"
       },
       "dependsOn": [
         "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb)]",

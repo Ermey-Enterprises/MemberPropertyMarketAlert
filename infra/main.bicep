@@ -757,13 +757,12 @@ resource webAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-0
   }
 }
 
-resource functionAppCosmosDbAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+resource functionAppCosmosDbAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = if (deployFunctionApp) {
+  parent: cosmosDbAccount
   name: guid(cosmosDbAccount.id, resourceNames.functionApp, 'Cosmos DB Built-in Data Contributor')
-  scope: cosmosDbAccount
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00000000-0000-0000-0000-000000000002') // Cosmos DB Built-in Data Contributor
+    roleDefinitionId: '${cosmosDbAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
     principalId: deployFunctionApp ? functionApp.identity.principalId : ''
-    principalType: 'ServicePrincipal'
   }
 }
 
