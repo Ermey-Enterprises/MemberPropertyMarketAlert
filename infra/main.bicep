@@ -475,11 +475,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=STORAGE-CONNECTION-STRING)'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}'
         }
         {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=STORAGE-CONNECTION-STRING)'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}'
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
@@ -499,11 +499,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=APPLICATION-INSIGHTS-CONNECTION-STRING)'
+          value: applicationInsights.properties.ConnectionString
         }
         {
           name: 'CosmosDb__ConnectionString'
-          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=COSMOS-CONNECTION-STRING)'
+          value: cosmosDbAccount.listConnectionStrings().connectionStrings[0].connectionString
         }
         {
           name: 'CosmosDb__DatabaseName'
@@ -511,7 +511,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
         }
         {
           name: 'RentCast__ApiKey'
-          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=RENTCAST-API-KEY)'
+          value: rentCastApiKey
         }
         {
           name: 'RentCast__BaseUrl'
@@ -519,7 +519,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
         }
         {
           name: 'AdminApiKey'
-          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=ADMIN-API-KEY)'
+          value: adminApiKey
         }
         {
           name: 'AZURE_KEY_VAULT_URI'
@@ -541,6 +541,12 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
     keyVaultReferenceIdentity: 'SystemAssigned'
     clientAffinityEnabled: false
   }
+  dependsOn: [
+    storageAccount
+    applicationInsights
+    cosmosDbAccount
+    keyVault
+  ]
 }
 
 // Web App for Admin UI

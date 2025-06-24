@@ -48,14 +48,16 @@ Run the GitHub Actions workflow (either via push or manual trigger):
 After deployment, check your Key Vault in Azure Portal:
 
 **Expected Secrets in Key Vault:**
-- `APPLICATION-INSIGHTS-CONNECTION-STRING` (auto-generated)
-- `COSMOS-CONNECTION-STRING` (auto-generated)
-- `STORAGE-CONNECTION-STRING` (auto-generated)
+- `APPLICATION-INSIGHTS-CONNECTION-STRING` (auto-generated, for reference)
+- `COSMOS-CONNECTION-STRING` (auto-generated, for reference)
+- `STORAGE-CONNECTION-STRING` (auto-generated, for reference)
 - `RENTCAST-API-KEY` (from GitHub Secret)
 - `ADMIN-API-KEY` (from GitHub Secret)
 - `AZURE-CLIENT-ID` (from GitHub Secret)
 - `AZURE-TENANT-ID` (from GitHub Secret)
 - `AZURE-SUBSCRIPTION-ID` (from GitHub Secret)
+
+**Note:** Infrastructure connection strings (Application Insights, Cosmos DB, Storage) are stored in Key Vault for reference but the Function App uses direct connections for reliability.
 
 ### Step 4: Automatic Transition
 
