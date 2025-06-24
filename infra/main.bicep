@@ -195,7 +195,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     allowCrossTenantReplication: false
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
-    allowSharedKeyAccess: !enableAdvancedSecurity
+    allowSharedKeyAccess: true  // Required for Azure Functions infrastructure
     networkAcls: {
       bypass: 'AzureServices'
       virtualNetworkRules: []
