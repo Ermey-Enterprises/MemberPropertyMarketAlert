@@ -763,6 +763,7 @@ resource functionAppCosmosDbAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRol
   properties: {
     roleDefinitionId: '${cosmosDbAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
     principalId: deployFunctionApp ? functionApp.identity.principalId : ''
+    scope: cosmosDbAccount.id
   }
 }
 

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.36.1.42791",
-      "templateHash": "9672182854553811422"
+      "templateHash": "2055650235032361632"
     }
   },
   "parameters": {
@@ -872,7 +872,8 @@
       "name": "[format('{0}/{1}', variables('resourceNames').cosmosDb, guid(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), variables('resourceNames').functionApp, 'Cosmos DB Built-in Data Contributor'))]",
       "properties": {
         "roleDefinitionId": "[format('{0}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002', resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb))]",
-        "principalId": "[if(parameters('deployFunctionApp'), reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId, '')]"
+        "principalId": "[if(parameters('deployFunctionApp'), reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId, '')]",
+        "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb)]"
       },
       "dependsOn": [
         "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb)]",
