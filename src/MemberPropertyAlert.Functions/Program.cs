@@ -1,3 +1,7 @@
+// Member Property Alert Functions
+// Version: 1.0.1 - Infrastructure deployment ready
+// Last updated: 2025-06-24
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

@@ -1,3 +1,7 @@
+// Member Property Alert UI
+// Version: 1.0.1 - Infrastructure deployment ready  
+// Last updated: 2025-06-24
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
