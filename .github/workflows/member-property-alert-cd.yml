@@ -231,16 +231,43 @@ jobs:
         run: |
           set -euo pipefail
           
+          # Enable verbose logging
+          echo "🔍 VERBOSE LOGGING ENABLED"
+          echo "=================================================="
+          
           RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
           ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
           LOC="${{ env.AZURE_LOCATION }}"
           
+          echo "📋 Deployment Configuration:"
+          echo "  Resource Group: $RG_NAME"
+          echo "  Environment: $ENV"
+          echo "  Location: $LOC"
+          echo "  GitHub Actor: ${{ github.actor }}"
+          echo "  GitHub Ref: ${{ github.ref }}"
+          echo "  GitHub SHA: ${{ github.sha }}"
+          echo "  Workflow Run ID: ${{ github.run_id }}"
+          echo "  Workflow Run Number: ${{ github.run_number }}"
+          
+          # Log Azure CLI version and context
+          echo "🔧 Azure CLI Information:"
+          az version --output table || echo "Failed to get Azure CLI version"
+          
+          echo "👤 Azure Account Information:"
+          az account show --output table || echo "Failed to get account info"
+          
+          echo "📍 Azure Location Information:"
+          az account list-locations --query "[?name=='$LOC']" --output table || echo "Failed to get location info"
+          
           # Check if secrets are configured (but allow placeholder values)
+          echo "🔐 Secret Configuration Check:"
           if [ -z "${{ secrets.RENTCAST_API_KEY }}" ]; then
             echo "❌ RENTCAST_API_KEY secret is not configured in GitHub repository settings."
             exit 1
           elif [ "${{ secrets.RENTCAST_API_KEY }}" = "placeholder" ] || [ "${{ secrets.RENTCAST_API_KEY }}" = "PLACEHOLDER" ]; then
             echo "⚠️ RENTCAST_API_KEY is set to placeholder value - deployment will continue but API functionality may be limited."
+          else
+            echo "✅ RENTCAST_API_KEY is configured (length: ${#{{ secrets.RENTCAST_API_KEY }}} characters)"
           fi
           
           if [ -z "${{ secrets.ADMIN_API_KEY }}" ]; then
@@ -248,6 +275,8 @@ jobs:
             exit 1
           elif [ "${{ secrets.ADMIN_API_KEY }}" = "placeholder" ] || [ "${{ secrets.ADMIN_API_KEY }}" = "PLACEHOLDER" ]; then
             echo "⚠️ ADMIN_API_KEY is set to placeholder value - deployment will continue but admin functionality may be limited."
+          else
+            echo "✅ ADMIN_API_KEY is configured (length: ${#{{ secrets.ADMIN_API_KEY }}} characters)"
           fi
           
           echo "🏗️ Deploying infrastructure to resource group: $RG_NAME"
@@ -279,36 +308,133 @@ jobs:
           echo "📋 Using inline parameters for environment: $ENV"
           PARAM_ARGS="--parameters environment=$ENV location=$LOC appName=member-property-alert rentCastApiKey=${{ secrets.RENTCAST_API_KEY }} adminApiKey=${{ secrets.ADMIN_API_KEY }}"
           
-          # Validate deployment parameters before execution
-          echo "🔍 Validating deployment parameters..."
-          az deployment group validate \
+          # Use what-if for validation to avoid response stream conflicts
+          echo "🔍 Validating deployment with what-if analysis..."
+          echo "  Command: az deployment group what-if --resource-group $RG_NAME --template-file infra/main.bicep $PARAM_ARGS --result-format FullResourcePayloads"
+          
+          # Capture what-if output for debugging
+          WHATIF_OUTPUT_FILE=$(mktemp)
+          az deployment group what-if \
             --resource-group "$RG_NAME" \
             --template-file infra/main.bicep \
-            $PARAM_ARGS
+            $PARAM_ARGS \
+            --result-format FullResourcePayloads > "$WHATIF_OUTPUT_FILE" 2>&1
           
-          if [ $? -ne 0 ]; then
-            echo "❌ Deployment validation failed"
-            exit 1
+          WHATIF_EXIT_CODE=$?
+          echo "  What-if exit code: $WHATIF_EXIT_CODE"
+          
+          if [ $WHATIF_EXIT_CODE -ne 0 ]; then
+            echo "❌ Deployment what-if validation failed with exit code: $WHATIF_EXIT_CODE"
+            echo "🔍 What-if error output:"
+            cat "$WHATIF_OUTPUT_FILE" || echo "Could not read what-if output"
+            rm -f "$WHATIF_OUTPUT_FILE"
+            
+            echo "🔍 Retrying with basic validation..."
+            
+            # Fallback to basic template validation only
+            VALIDATE_OUTPUT_FILE=$(mktemp)
+            az deployment group validate \
+              --resource-group "$RG_NAME" \
+              --template-file infra/main.bicep \
+              $PARAM_ARGS \
+              --no-wait > "$VALIDATE_OUTPUT_FILE" 2>&1
+            
+            VALIDATE_EXIT_CODE=$?
+            echo "  Basic validation exit code: $VALIDATE_EXIT_CODE"
+            
+            if [ $VALIDATE_EXIT_CODE -ne 0 ]; then
+              echo "❌ Both what-if and basic validation failed"
+              echo "🔍 Basic validation error output:"
+              cat "$VALIDATE_OUTPUT_FILE" || echo "Could not read validation output"
+              rm -f "$VALIDATE_OUTPUT_FILE"
+              exit 1
+            fi
+            rm -f "$VALIDATE_OUTPUT_FILE"
+          else
+            echo "✅ What-if validation succeeded"
+            echo "🔍 What-if analysis preview (first 50 lines):"
+            head -50 "$WHATIF_OUTPUT_FILE" || echo "Could not read what-if output"
+            rm -f "$WHATIF_OUTPUT_FILE"
           fi
           
           echo "✅ Deployment validation succeeded"
           
-          # Deploy infrastructure with full error output visible
+          # Add delay to prevent response stream conflicts
+          echo "⏳ Waiting 5 seconds to prevent Azure CLI response stream conflicts..."
+          sleep 5
+          
+          # Deploy infrastructure with enhanced error handling
           echo "🚀 Executing Azure deployment..."
+          echo "  Command: az deployment group create --resource-group $RG_NAME --name $DEPLOYMENT_NAME --template-file infra/main.bicep $PARAM_ARGS --no-wait"
+          echo "  Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          
+          DEPLOY_OUTPUT_FILE=$(mktemp)
           az deployment group create \
             --resource-group "$RG_NAME" \
             --name "$DEPLOYMENT_NAME" \
             --template-file infra/main.bicep \
-            $PARAM_ARGS
+            $PARAM_ARGS \
+            --no-wait > "$DEPLOY_OUTPUT_FILE" 2>&1
+          
+          DEPLOY_INIT_EXIT_CODE=$?
+          echo "  Deployment initiation exit code: $DEPLOY_INIT_EXIT_CODE"
+          
+          if [ $DEPLOY_INIT_EXIT_CODE -ne 0 ]; then
+            echo "❌ Failed to initiate Azure deployment with exit code: $DEPLOY_INIT_EXIT_CODE"
+            echo "🔍 Deployment initiation error output:"
+            cat "$DEPLOY_OUTPUT_FILE" || echo "Could not read deployment output"
+            rm -f "$DEPLOY_OUTPUT_FILE"
+            exit 1
+          fi
+          
+          echo "✅ Deployment initiated successfully"
+          cat "$DEPLOY_OUTPUT_FILE" || echo "Could not read deployment output"
+          rm -f "$DEPLOY_OUTPUT_FILE"
+          
+          # Wait for deployment to complete with polling
+          echo "⏳ Waiting for deployment to complete..."
+          echo "  Command: az deployment group wait --resource-group $RG_NAME --name $DEPLOYMENT_NAME --created --timeout 1800"
+          echo "  Timeout: 30 minutes (1800 seconds)"
+          echo "  Start time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          
+          WAIT_OUTPUT_FILE=$(mktemp)
+          az deployment group wait \
+            --resource-group "$RG_NAME" \
+            --name "$DEPLOYMENT_NAME" \
+            --created \
+            --timeout 1800 > "$WAIT_OUTPUT_FILE" 2>&1
           
           # Check deployment exit code
           DEPLOYMENT_EXIT_CODE=$?
+          echo "  Deployment wait exit code: $DEPLOYMENT_EXIT_CODE"
+          echo "  End time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          
           if [ $DEPLOYMENT_EXIT_CODE -ne 0 ]; then
             echo "❌ Azure deployment failed with exit code: $DEPLOYMENT_EXIT_CODE"
-            echo "🔍 Checking deployment status..."
-            az deployment group show --resource-group "$RG_NAME" --name "$DEPLOYMENT_NAME" --query "properties.provisioningState" --output tsv || echo "Could not retrieve deployment status"
+            echo "🔍 Deployment wait error output:"
+            cat "$WAIT_OUTPUT_FILE" || echo "Could not read wait output"
+            rm -f "$WAIT_OUTPUT_FILE"
+            
+            echo "🔍 Checking detailed deployment status..."
+            az deployment group show \
+              --resource-group "$RG_NAME" \
+              --name "$DEPLOYMENT_NAME" \
+              --query "properties" \
+              --output json || echo "Could not retrieve detailed deployment status"
+            
+            echo "🔍 Checking deployment operations..."
+            az deployment operation group list \
+              --resource-group "$RG_NAME" \
+              --name "$DEPLOYMENT_NAME" \
+              --query "[?properties.provisioningState=='Failed']" \
+              --output table || echo "Could not retrieve failed operations"
+            
             exit 1
           fi
+          
+          echo "✅ Deployment wait completed successfully"
+          cat "$WAIT_OUTPUT_FILE" || echo "Could not read wait output"
+          rm -f "$WAIT_OUTPUT_FILE"
           
           echo "✅ Infrastructure deployment completed successfully"
           

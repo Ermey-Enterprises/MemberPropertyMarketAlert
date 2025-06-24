@@ -4,6 +4,34 @@ This directory contains scripts for deploying and managing the Member Property A
 
 ## Scripts Overview
 
+### Test-Deployment.ps1
+
+PowerShell script for validating deployment configuration locally before actual deployment.
+
+**Features:**
+- Local Bicep template validation and compilation
+- What-if analysis to preview deployment changes
+- Parameter file validation
+- Azure CLI connectivity testing
+- Comprehensive pre-deployment checks
+
+**Usage:**
+```powershell
+# Test dev environment deployment
+.\Test-Deployment.ps1 -Environment dev
+
+# Test with custom resource group
+.\Test-Deployment.ps1 -Environment test -ResourceGroupName "my-custom-rg"
+
+# Test specific location
+.\Test-Deployment.ps1 -Environment prod -Location "westus2"
+```
+
+**Prerequisites:**
+- Azure CLI installed and authenticated (`az login`)
+- PowerShell 5.1 or PowerShell Core 7+
+- Read permissions on target Azure subscription
+
 ### Deploy-Infrastructure.ps1
 
 PowerShell script for deploying Azure infrastructure using Bicep templates.
