@@ -43,11 +43,19 @@
     <ItemGroup>
       <DistFiles Include="$(SpaRoot)build\**" />
       <ResolvedFileToPublish Include="@(DistFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
-        <RelativePath>%(DistFiles.Identity)</RelativePath>
+        <RelativePath>build\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       </ResolvedFileToPublish>
     </ItemGroup>
+  </Target>
+
+  <!-- Ensure build files are copied to output directory for local testing -->
+  <Target Name="CopyBuildFiles" AfterTargets="Build">
+    <ItemGroup>
+      <BuildFiles Include="$(SpaRoot)build\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BuildFiles)" DestinationFiles="@(BuildFiles->'$(OutputPath)build\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 
 </Project>

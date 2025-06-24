@@ -1,6 +1,8 @@
 // Member Property Alert UI
-// Version: 1.0.1 - Infrastructure deployment ready  
+// Version: 1.0.2 - Fixed React app serving
 // Last updated: 2025-06-24
+
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,13 +19,29 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Configure static files to serve React build files
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(builder.Environment.ContentRootPath, "build")),
+    RequestPath = ""
+});
+
+// Fallback to serve from wwwroot if file not found in build
 app.UseStaticFiles();
+
 app.UseRouting();
 
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller}/{action=Index}/{id?}");
 
-app.MapFallbackToFile("index.html");
+// Serve React app for all non-API routes
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(builder.Environment.ContentRootPath, "build"))
+});
 
 app.Run();
