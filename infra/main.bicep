@@ -29,6 +29,9 @@ param adminApiKey string = ''
 @description('Enable advanced security features')
 param enableAdvancedSecurity bool = true
 
+@description('Enable health check monitoring')
+param enableHealthCheckMonitoring bool = true
+
 @description('Azure Client ID for deployment (will be stored in Key Vault)')
 @secure()
 param azureClientId string = ''
@@ -548,6 +551,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
         {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
           value: '1'
+        }
+        {
+          name: 'ENABLE_HEALTH_CHECK_MONITORING'
+          value: string(enableHealthCheckMonitoring)
         }
       ]
     }
