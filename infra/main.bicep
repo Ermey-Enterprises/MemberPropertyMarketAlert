@@ -29,6 +29,18 @@ param adminApiKey string = ''
 @description('Enable advanced security features')
 param enableAdvancedSecurity bool = true
 
+@description('Azure Client ID for deployment (will be stored in Key Vault)')
+@secure()
+param azureClientId string = ''
+
+@description('Azure Tenant ID for deployment (will be stored in Key Vault)')
+@secure()
+param azureTenantId string = ''
+
+@description('Azure Subscription ID for deployment (will be stored in Key Vault)')
+@secure()
+param azureSubscriptionId string = ''
+
 // Azure naming convention variables following Microsoft Cloud Adoption Framework
 // Pattern: <resource-type>-<workload>-<environment>-<region>-<instance>
 var locationAbbreviation = {
@@ -639,6 +651,34 @@ resource adminApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (
   name: 'ADMIN-API-KEY'
   properties: {
     value: adminApiKey
+    contentType: 'text/plain'
+  }
+}
+
+// Deployment credential secrets (auto-populated from GitHub secrets)
+resource azureClientIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(azureClientId)) {
+  parent: keyVault
+  name: 'AZURE-CLIENT-ID'
+  properties: {
+    value: azureClientId
+    contentType: 'text/plain'
+  }
+}
+
+resource azureTenantIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(azureTenantId)) {
+  parent: keyVault
+  name: 'AZURE-TENANT-ID'
+  properties: {
+    value: azureTenantId
+    contentType: 'text/plain'
+  }
+}
+
+resource azureSubscriptionIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(azureSubscriptionId)) {
+  parent: keyVault
+  name: 'AZURE-SUBSCRIPTION-ID'
+  properties: {
+    value: azureSubscriptionId
     contentType: 'text/plain'
   }
 }

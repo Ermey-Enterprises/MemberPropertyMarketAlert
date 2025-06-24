@@ -284,19 +284,6 @@ jobs:
           echo "  Environment: $ENV"
           echo "  Location: $LOC"
           
-          # Validate secrets
-          if [ -z "${{ secrets.RENTCAST_API_KEY }}" ]; then
-            echo "❌ RENTCAST_API_KEY secret not configured"
-            exit 1
-          fi
-          
-          if [ -z "${{ secrets.ADMIN_API_KEY }}" ]; then
-            echo "❌ ADMIN_API_KEY secret not configured"
-            exit 1
-          fi
-          
-          echo "✅ Secrets validated"
-          
           # Create resource group
           echo "🔨 Creating resource group..."
           az group create --name "$RG_NAME" --location "$LOC" --output none
@@ -307,19 +294,84 @@ jobs:
           echo "🔍 Validating Bicep template..."
           az bicep build --file infra/main.bicep
           
-          echo "🚀 Deploying infrastructure..."
-          az deployment group create \
-            --resource-group "$RG_NAME" \
-            --name "$DEPLOYMENT_NAME" \
-            --template-file infra/main.bicep \
-            --parameters \
-              environment="$ENV" \
-              location="$LOC" \
-              deployFunctionApp="${{ needs.analyze-changes.outputs.deploy-function-app }}" \
-              deployWebApp="${{ needs.analyze-changes.outputs.deploy-web-app }}" \
-              rentCastApiKey="${{ secrets.RENTCAST_API_KEY }}" \
-              adminApiKey="${{ secrets.ADMIN_API_KEY }}" \
-            --verbose
+          # Check if Key Vault exists and has secrets (for Key Vault mode)
+          KV_NAME="kv-mpa-${ENV}-eus2-"
+          EXISTING_KV=$(az keyvault list --resource-group "$RG_NAME" --query "[?starts_with(name, '$KV_NAME')].name" -o tsv 2>/dev/null || echo "")
+          
+          if [ -n "$EXISTING_KV" ]; then
+            echo "🔑 Key Vault found: $EXISTING_KV - attempting Key Vault mode"
+            
+            # Try to retrieve secrets from Key Vault
+            RENTCAST_KEY=$(az keyvault secret show --vault-name "$EXISTING_KV" --name "RENTCAST-API-KEY" --query value -o tsv 2>/dev/null || echo "")
+            ADMIN_KEY=$(az keyvault secret show --vault-name "$EXISTING_KV" --name "ADMIN-API-KEY" --query value -o tsv 2>/dev/null || echo "")
+            CLIENT_ID=$(az keyvault secret show --vault-name "$EXISTING_KV" --name "AZURE-CLIENT-ID" --query value -o tsv 2>/dev/null || echo "")
+            TENANT_ID=$(az keyvault secret show --vault-name "$EXISTING_KV" --name "AZURE-TENANT-ID" --query value -o tsv 2>/dev/null || echo "")
+            SUB_ID=$(az keyvault secret show --vault-name "$EXISTING_KV" --name "AZURE-SUBSCRIPTION-ID" --query value -o tsv 2>/dev/null || echo "")
+            
+            if [ -n "$RENTCAST_KEY" ] && [ -n "$ADMIN_KEY" ] && [ -n "$CLIENT_ID" ]; then
+              echo "✅ Using Key Vault mode - secrets retrieved from $EXISTING_KV"
+              DEPLOYMENT_MODE="keyvault"
+            else
+              echo "⚠️ Key Vault exists but missing secrets - falling back to GitHub secrets mode"
+              DEPLOYMENT_MODE="github"
+            fi
+          else
+            echo "🆕 No existing Key Vault found - using GitHub secrets mode for initial deployment"
+            DEPLOYMENT_MODE="github"
+          fi
+          
+          echo "🚀 Deploying infrastructure in $DEPLOYMENT_MODE mode..."
+          
+          if [ "$DEPLOYMENT_MODE" == "keyvault" ]; then
+            # Deploy using Key Vault secrets
+            az deployment group create \
+              --resource-group "$RG_NAME" \
+              --name "$DEPLOYMENT_NAME" \
+              --template-file infra/main.bicep \
+              --parameters \
+                environment="$ENV" \
+                location="$LOC" \
+                deployFunctionApp="${{ needs.analyze-changes.outputs.deploy-function-app }}" \
+                deployWebApp="${{ needs.analyze-changes.outputs.deploy-web-app }}" \
+                rentCastApiKey="$RENTCAST_KEY" \
+                adminApiKey="$ADMIN_KEY" \
+                azureClientId="$CLIENT_ID" \
+                azureTenantId="$TENANT_ID" \
+                azureSubscriptionId="$SUB_ID" \
+              --verbose \
+              --debug
+          else
+            # Deploy using GitHub secrets (initial deployment or fallback)
+            # Validate GitHub secrets
+            if [ -z "${{ secrets.RENTCAST_API_KEY }}" ]; then
+              echo "❌ RENTCAST_API_KEY secret not configured"
+              exit 1
+            fi
+            
+            if [ -z "${{ secrets.ADMIN_API_KEY }}" ]; then
+              echo "❌ ADMIN_API_KEY secret not configured"
+              exit 1
+            fi
+            
+            echo "✅ GitHub secrets validated"
+            
+            az deployment group create \
+              --resource-group "$RG_NAME" \
+              --name "$DEPLOYMENT_NAME" \
+              --template-file infra/main.bicep \
+              --parameters \
+                environment="$ENV" \
+                location="$LOC" \
+                deployFunctionApp="${{ needs.analyze-changes.outputs.deploy-function-app }}" \
+                deployWebApp="${{ needs.analyze-changes.outputs.deploy-web-app }}" \
+                rentCastApiKey="${{ secrets.RENTCAST_API_KEY }}" \
+                adminApiKey="${{ secrets.ADMIN_API_KEY }}" \
+                azureClientId="${{ secrets.AZURE_CLIENT_ID }}" \
+                azureTenantId="${{ secrets.AZURE_TENANT_ID }}" \
+                azureSubscriptionId="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+              --verbose \
+              --debug
+          fi
           
           echo "📤 Extracting deployment outputs..."
           DEPLOYMENT_OUTPUTS=$(az deployment group show \

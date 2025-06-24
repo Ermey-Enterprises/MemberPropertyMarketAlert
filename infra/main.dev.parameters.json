@@ -25,6 +25,15 @@
     },
     "adminApiKey": {
       "value": "placeholder-dev-admin-key"
+    },
+    "azureClientId": {
+      "value": "placeholder-dev-client-id"
+    },
+    "azureTenantId": {
+      "value": "placeholder-dev-tenant-id"
+    },
+    "azureSubscriptionId": {
+      "value": "placeholder-dev-subscription-id"
     }
   }
 }

@@ -25,6 +25,15 @@
     },
     "adminApiKey": {
       "value": "placeholder-test-admin-key"
+    },
+    "azureClientId": {
+      "value": "placeholder-test-client-id"
+    },
+    "azureTenantId": {
+      "value": "placeholder-test-tenant-id"
+    },
+    "azureSubscriptionId": {
+      "value": "placeholder-test-subscription-id"
     }
   }
 }
