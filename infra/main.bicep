@@ -1,57 +1,158 @@
-@description('Environment name (dev, test, prod)')
+// Member Property Market Alert Platform
+// Modern Azure infrastructure template following Microsoft Cloud Adoption Framework
+// Based on industry best practices for security, scalability, and maintainability
+
+@description('Environment designation (dev, test, prod)')
+@allowed(['dev', 'test', 'prod'])
 param environment string = 'dev'
 
-@description('Location for all resources')
+@description('Azure region for resource deployment')
 param location string = resourceGroup().location
 
-@description('Application name prefix')
+@description('Application name prefix for resource naming')
 param appName string = 'member-property-alert'
 
-@description('RentCast API key for property data')
+@description('Deploy Function App component')
+param deployFunctionApp bool = true
+
+@description('Deploy Web App component')
+param deployWebApp bool = true
+
+@description('RentCast API key for property data (will be stored in Key Vault)')
 @secure()
 param rentCastApiKey string = ''
 
-@description('Admin API key for secure endpoints')
+@description('Admin API key for secure endpoints (will be stored in Key Vault)')
 @secure()
 param adminApiKey string = ''
 
-// Variables
-var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
-var functionAppName = 'func-${appName}-${environment}'
-var webAppName = 'web-${appName}-${environment}'
-var storageAccountName = 'st${replace(appName, '-', '')}${environment}${uniqueSuffix}'
-var cosmosAccountName = 'cosmos-${appName}-${environment}'
-var appInsightsName = 'ai-${appName}-${environment}'
-var logAnalyticsName = 'log-${appName}-${environment}'
-var appServicePlanName = 'asp-${appName}-${environment}'
+@description('Enable advanced security features')
+param enableAdvancedSecurity bool = true
 
-// Tags
+// Azure naming convention variables following Microsoft Cloud Adoption Framework
+// Pattern: <resource-type>-<workload>-<environment>-<region>-<instance>
+var locationAbbreviation = {
+  eastus: 'eus'
+  eastus2: 'eus2'
+  westus: 'wus'
+  westus2: 'wus2'
+  centralus: 'cus'
+  northcentralus: 'ncus'
+  southcentralus: 'scus'
+  westcentralus: 'wcus'
+  northeurope: 'neu'
+  westeurope: 'weu'
+}
+
+var locationCode = locationAbbreviation[location] ?? 'unk'
+var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 4)
+var workloadName = 'mpa' // member-property-alert abbreviated
+
+// Resource naming following Microsoft Cloud Adoption Framework recommendations
+var resourceNames = {
+  // Storage accounts have strict naming rules: 3-24 chars, lowercase letters and numbers only
+  storageAccount: 'st${workloadName}${environment}${locationCode}${uniqueSuffix}'
+  
+  // Key Vault: 3-24 chars, alphanumeric and hyphens
+  keyVault: 'kv-${workloadName}-${environment}-${locationCode}-${uniqueSuffix}'
+  
+  // Cosmos DB: 3-44 chars, lowercase letters, numbers, and hyphens
+  cosmosDb: 'cosmos-${workloadName}-${environment}-${locationCode}-${uniqueSuffix}'
+  
+  // Application Insights: 1-260 chars
+  applicationInsights: 'appi-${workloadName}-${environment}-${locationCode}-${uniqueSuffix}'
+  
+  // Log Analytics: 4-63 chars
+  logAnalytics: 'log-${workloadName}-${environment}-${locationCode}-${uniqueSuffix}'
+  
+  // App Service Plan: 1-40 chars for Windows, 1-60 for Linux
+  appServicePlan: 'asp-${workloadName}-${environment}-${locationCode}-${uniqueSuffix}'
+  
+  // Function App: 2-60 chars
+  functionApp: 'func-${workloadName}-${environment}-${locationCode}-${uniqueSuffix}'
+  
+  // Web App: 2-60 chars
+  webApp: 'web-${workloadName}-${environment}-${locationCode}-${uniqueSuffix}'
+}
+
+// Environment-specific configuration
+var environmentConfig = {
+  dev: {
+    appServicePlanSku: {
+      name: 'B1'
+      tier: 'Basic'
+    }
+    cosmosFreeTier: true
+    logRetentionDays: 30
+    backupIntervalMinutes: 1440
+    backupRetentionHours: 168
+    functionAppScaleLimit: 10
+    alwaysOn: false
+  }
+  test: {
+    appServicePlanSku: {
+      name: 'S1'
+      tier: 'Standard'
+    }
+    cosmosFreeTier: false
+    logRetentionDays: 60
+    backupIntervalMinutes: 720
+    backupRetentionHours: 336
+    functionAppScaleLimit: 50
+    alwaysOn: true
+  }
+  prod: {
+    appServicePlanSku: {
+      name: 'P1v3'
+      tier: 'PremiumV3'
+    }
+    cosmosFreeTier: false
+    logRetentionDays: 90
+    backupIntervalMinutes: 240
+    backupRetentionHours: 720
+    functionAppScaleLimit: 200
+    alwaysOn: true
+  }
+}
+
+var currentConfig = environmentConfig[environment]
+
+// Comprehensive resource tagging strategy
 var commonTags = {
   Environment: environment
   Application: 'MemberPropertyAlert'
+  Workload: workloadName
   ManagedBy: 'Bicep'
   CostCenter: 'IT'
+  Owner: 'DevOps'
+  Project: 'PropertyMarketAlert'
 }
 
-// Log Analytics Workspace
+// Log Analytics Workspace (required for Application Insights)
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
-  name: logAnalyticsName
+  name: resourceNames.logAnalytics
   location: location
   tags: commonTags
   properties: {
     sku: {
       name: 'PerGB2018'
     }
-    retentionInDays: environment == 'prod' ? 90 : 30
+    retentionInDays: currentConfig.logRetentionDays
     features: {
       enableLogAccessUsingOnlyResourcePermissions: true
+      disableLocalAuth: enableAdvancedSecurity
     }
+    workspaceCapping: {
+      dailyQuotaGb: environment == 'prod' ? 10 : 5
+    }
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
   }
 }
 
 // Application Insights
-resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
-  name: appInsightsName
+resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: resourceNames.applicationInsights
   location: location
   tags: commonTags
   kind: 'web'
@@ -61,26 +162,28 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     IngestionMode: 'LogAnalytics'
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
+    DisableIpMasking: false
+    DisableLocalAuth: enableAdvancedSecurity
   }
 }
 
 // Storage Account
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: storageAccountName
+  name: resourceNames.storageAccount
   location: location
   tags: commonTags
   sku: {
-    name: environment == 'prod' ? 'Standard_LRS' : 'Standard_LRS'
+    name: environment == 'prod' ? 'Standard_ZRS' : 'Standard_LRS'
   }
   kind: 'StorageV2'
   properties: {
     dnsEndpointType: 'Standard'
-    defaultToOAuthAuthentication: false
+    defaultToOAuthAuthentication: enableAdvancedSecurity
     publicNetworkAccess: 'Enabled'
     allowCrossTenantReplication: false
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
-    allowSharedKeyAccess: true
+    allowSharedKeyAccess: !enableAdvancedSecurity
     networkAcls: {
       bypass: 'AzureServices'
       virtualNetworkRules: []
@@ -89,7 +192,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     }
     supportsHttpsTrafficOnly: true
     encryption: {
-      requireInfrastructureEncryption: false
+      requireInfrastructureEncryption: enableAdvancedSecurity
       services: {
         file: {
           keyType: 'Account'
@@ -106,14 +209,42 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
+// Key Vault for secure secret management
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+  name: resourceNames.keyVault
+  location: location
+  tags: commonTags
+  properties: {
+    tenantId: subscription().tenantId
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+    enableRbacAuthorization: true
+    enabledForTemplateDeployment: true
+    enabledForDiskEncryption: false
+    enabledForDeployment: false
+    enableSoftDelete: true
+    softDeleteRetentionInDays: environment == 'prod' ? 90 : 7
+    enablePurgeProtection: environment == 'prod'
+    publicNetworkAccess: 'Enabled'
+    networkAcls: {
+      bypass: 'AzureServices'
+      defaultAction: 'Allow'
+      ipRules: []
+      virtualNetworkRules: []
+    }
+  }
+}
+
 // Cosmos DB Account
-resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
-  name: cosmosAccountName
+resource cosmosDbAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
+  name: resourceNames.cosmosDb
   location: location
   tags: commonTags
   kind: 'GlobalDocumentDB'
   properties: {
-    enableFreeTier: environment != 'prod'
+    enableFreeTier: currentConfig.cosmosFreeTier
     databaseAccountOfferType: 'Standard'
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
@@ -122,7 +253,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
       {
         locationName: location
         failoverPriority: 0
-        isZoneRedundant: false
+        isZoneRedundant: environment == 'prod'
       }
     ]
     capabilities: [
@@ -133,9 +264,9 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     backupPolicy: {
       type: 'Periodic'
       periodicModeProperties: {
-        backupIntervalInMinutes: environment == 'prod' ? 240 : 1440
-        backupRetentionIntervalInHours: environment == 'prod' ? 720 : 168
-        backupStorageRedundancy: 'Local'
+        backupIntervalInMinutes: currentConfig.backupIntervalMinutes
+        backupRetentionIntervalInHours: currentConfig.backupRetentionHours
+        backupStorageRedundancy: environment == 'prod' ? 'Zone' : 'Local'
       }
     }
     networkAclBypass: 'AzureServices'
@@ -144,12 +275,13 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     enablePartitionMerge: false
     enableBurstCapacity: false
     minimalTlsVersion: 'Tls12'
+    disableKeyBasedMetadataWriteAccess: enableAdvancedSecurity
   }
 }
 
 // Cosmos DB Database
 resource cosmosDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' = {
-  parent: cosmosAccount
+  parent: cosmosDbAccount
   name: 'MemberPropertyAlert'
   properties: {
     resource: {
@@ -158,7 +290,7 @@ resource cosmosDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024
   }
 }
 
-// Cosmos DB Containers
+// Cosmos DB Containers with optimized configurations
 resource institutionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
   parent: cosmosDatabase
   name: 'Institutions'
@@ -183,6 +315,7 @@ resource institutionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabas
           }
         ]
       }
+      defaultTtl: -1
     }
   }
 }
@@ -211,6 +344,7 @@ resource addressesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/
           }
         ]
       }
+      defaultTtl: -1
     }
   }
 }
@@ -239,6 +373,7 @@ resource alertsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/con
           }
         ]
       }
+      defaultTtl: -1
     }
   }
 }
@@ -267,31 +402,36 @@ resource scanLogsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
           }
         ]
       }
+      defaultTtl: environment == 'prod' ? -1 : 2592000 // 30 days for non-prod
     }
   }
 }
 
 // App Service Plan
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
-  name: appServicePlanName
+  name: resourceNames.appServicePlan
   location: location
   tags: commonTags
-  sku: {
-    name: environment == 'prod' ? 'P1v3' : 'B1'
-    tier: environment == 'prod' ? 'PremiumV3' : 'Basic'
-  }
+  sku: currentConfig.appServicePlanSku
   kind: 'linux'
   properties: {
     reserved: true
+    zoneRedundant: environment == 'prod'
   }
 }
 
 // Function App
-resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
-  name: functionAppName
+resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
+  name: resourceNames.functionApp
   location: location
-  tags: commonTags
+  tags: union(commonTags, {
+    Component: 'FunctionApp'
+    Purpose: 'API'
+  })
   kind: 'functionapp,linux'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     reserved: true
@@ -304,32 +444,34 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       numberOfWorkers: 1
       linuxFxVersion: 'DOTNET-ISOLATED|8.0'
       acrUseManagedIdentityCreds: false
-      alwaysOn: environment == 'prod'
-      http20Enabled: false
-      functionAppScaleLimit: environment == 'prod' ? 200 : 10
+      alwaysOn: currentConfig.alwaysOn
+      http20Enabled: true
+      functionAppScaleLimit: currentConfig.functionAppScaleLimit
       minimumElasticInstanceCount: 0
       use32BitWorkerProcess: false
-      ftpsState: 'FtpsOnly'
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      scmMinTlsVersion: '1.2'
       healthCheckPath: '/api/health'
       cors: {
         allowedOrigins: [
           'https://portal.azure.com'
-          'https://${webAppName}.azurewebsites.net'
+          deployWebApp ? 'https://${resourceNames.webApp}.azurewebsites.net' : ''
         ]
         supportCredentials: false
       }
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=STORAGE-CONNECTION-STRING)'
         }
         {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=STORAGE-CONNECTION-STRING)'
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
-          value: toLower(functionAppName)
+          value: toLower(resourceNames.functionApp)
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -345,11 +487,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: appInsights.properties.ConnectionString
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=APPLICATION-INSIGHTS-CONNECTION-STRING)'
         }
         {
           name: 'CosmosDb__ConnectionString'
-          value: cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=COSMOS-CONNECTION-STRING)'
         }
         {
           name: 'CosmosDb__DatabaseName'
@@ -357,7 +499,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'RentCast__ApiKey'
-          value: rentCastApiKey
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=RENTCAST-API-KEY)'
         }
         {
           name: 'RentCast__BaseUrl'
@@ -365,7 +507,15 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'AdminApiKey'
-          value: adminApiKey
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=ADMIN-API-KEY)'
+        }
+        {
+          name: 'AZURE_KEY_VAULT_URI'
+          value: keyVault.properties.vaultUri
+        }
+        {
+          name: 'ASPNETCORE_ENVIRONMENT'
+          value: environment
         }
         {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
@@ -377,18 +527,22 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     redundancyMode: 'None'
     storageAccountRequired: false
     keyVaultReferenceIdentity: 'SystemAssigned'
-  }
-  identity: {
-    type: 'SystemAssigned'
+    clientAffinityEnabled: false
   }
 }
 
 // Web App for Admin UI
-resource webApp 'Microsoft.Web/sites@2023-12-01' = {
-  name: webAppName
+resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
+  name: resourceNames.webApp
   location: location
-  tags: commonTags
+  tags: union(commonTags, {
+    Component: 'WebApp'
+    Purpose: 'UI'
+  })
   kind: 'app,linux'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     reserved: true
@@ -401,15 +555,17 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
       numberOfWorkers: 1
       linuxFxVersion: 'NODE|18-lts'
       acrUseManagedIdentityCreds: false
-      alwaysOn: environment == 'prod'
-      http20Enabled: false
+      alwaysOn: currentConfig.alwaysOn
+      http20Enabled: true
       use32BitWorkerProcess: false
-      ftpsState: 'FtpsOnly'
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      scmMinTlsVersion: '1.2'
       healthCheckPath: '/health'
       appSettings: [
         {
           name: 'REACT_APP_API_BASE_URL'
-          value: 'https://${functionApp.properties.defaultHostName}/api'
+          value: deployFunctionApp ? 'https://${resourceNames.functionApp}.azurewebsites.net/api' : ''
         }
         {
           name: 'REACT_APP_ENVIRONMENT'
@@ -427,23 +583,119 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
           value: '1'
         }
+        {
+          name: 'AZURE_KEY_VAULT_URI'
+          value: keyVault.properties.vaultUri
+        }
       ]
     }
     httpsOnly: true
     redundancyMode: 'None'
     storageAccountRequired: false
+    keyVaultReferenceIdentity: 'SystemAssigned'
+    clientAffinityEnabled: false
   }
 }
 
-// Outputs
-output functionAppName string = functionApp.name
-output functionAppUrl string = 'https://${functionApp.properties.defaultHostName}'
-output webAppName string = webApp.name
-output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
-output cosmosAccountName string = cosmosAccount.name
-// Note: Connection string output removed to avoid exposing secrets in deployment outputs
-// Use Key Vault or managed identity for secure access to Cosmos DB
-output storageAccountName string = storageAccount.name
-output appInsightsName string = appInsights.name
-output appInsightsConnectionString string = appInsights.properties.ConnectionString
-output resourceGroupName string = resourceGroup().name
+// Key Vault Secrets
+resource applicationInsightsConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'APPLICATION-INSIGHTS-CONNECTION-STRING'
+  properties: {
+    value: applicationInsights.properties.ConnectionString
+    contentType: 'text/plain'
+  }
+}
+
+resource cosmosConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'COSMOS-CONNECTION-STRING'
+  properties: {
+    value: cosmosDbAccount.listConnectionStrings().connectionStrings[0].connectionString
+    contentType: 'text/plain'
+  }
+}
+
+resource storageConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'STORAGE-CONNECTION-STRING'
+  properties: {
+    value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}'
+    contentType: 'text/plain'
+  }
+}
+
+resource rentCastApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(rentCastApiKey)) {
+  parent: keyVault
+  name: 'RENTCAST-API-KEY'
+  properties: {
+    value: rentCastApiKey
+    contentType: 'text/plain'
+  }
+}
+
+resource adminApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(adminApiKey)) {
+  parent: keyVault
+  name: 'ADMIN-API-KEY'
+  properties: {
+    value: adminApiKey
+    contentType: 'text/plain'
+  }
+}
+
+// RBAC Role Assignments for Key Vault access
+resource functionAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+  name: guid(keyVault.id, resourceNames.functionApp, 'Key Vault Secrets User')
+  scope: keyVault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
+    principalId: deployFunctionApp ? functionApp.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
+  name: guid(keyVault.id, resourceNames.webApp, 'Key Vault Secrets User')
+  scope: keyVault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
+    principalId: deployWebApp ? webApp.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Outputs for CI/CD pipeline integration
+output infrastructure object = {
+  resourceGroupName: resourceGroup().name
+  location: location
+  environment: environment
+  keyVaultName: keyVault.name
+  keyVaultUri: keyVault.properties.vaultUri
+  storageAccountName: storageAccount.name
+  cosmosDbAccountName: cosmosDbAccount.name
+  cosmosDbEndpoint: cosmosDbAccount.properties.documentEndpoint
+  applicationInsightsName: applicationInsights.name
+  applicationInsightsConnectionString: applicationInsights.properties.ConnectionString
+  appServicePlanName: appServicePlan.name
+}
+
+output functionAppDeployment object = deployFunctionApp ? {
+  appServiceName: functionApp.name
+  appServiceUrl: 'https://${functionApp.properties.defaultHostName}'
+  principalId: functionApp.identity.principalId
+  healthCheckUrl: 'https://${functionApp.properties.defaultHostName}/api/health'
+} : {}
+
+output webAppDeployment object = deployWebApp ? {
+  appServiceName: webApp.name
+  appServiceUrl: 'https://${webApp.properties.defaultHostName}'
+  principalId: webApp.identity.principalId
+  healthCheckUrl: 'https://${webApp.properties.defaultHostName}/health'
+} : {}
+
+output security object = {
+  keyVaultEnabled: true
+  managedIdentityEnabled: true
+  advancedSecurityEnabled: enableAdvancedSecurity
+  rbacEnabled: true
+}

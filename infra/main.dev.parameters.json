@@ -10,6 +10,21 @@
     },
     "appName": {
       "value": "member-property-alert"
+    },
+    "deployFunctionApp": {
+      "value": true
+    },
+    "deployWebApp": {
+      "value": true
+    },
+    "enableAdvancedSecurity": {
+      "value": false
+    },
+    "rentCastApiKey": {
+      "value": "placeholder-dev-key"
+    },
+    "adminApiKey": {
+      "value": "placeholder-dev-admin-key"
     }
   }
 }

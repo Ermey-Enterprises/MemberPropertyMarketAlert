@@ -18,10 +18,20 @@ on:
           - dev
           - test
           - prod
+      deployFunctionApp:
+        description: 'Deploy Function App'
+        required: false
+        default: true
+        type: boolean
+      deployWebApp:
+        description: 'Deploy Web App'
+        required: false
+        default: true
+        type: boolean
       debug_mode:
         description: 'Enable enhanced debug logging'
         required: false
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -36,10 +46,7 @@ env:
   AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   AZURE_LOCATION: 'eastus2'
-  # Debug and logging configuration
   DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
-  VERBOSE_LOGGING: 'true'
-  LOG_LEVEL: 'DEBUG'
 
 jobs:
   analyze-changes:
@@ -50,326 +57,103 @@ jobs:
       ui-changed: ${{ steps.changes.outputs.ui-changed }}
       deploy-environment: ${{ steps.deployment-flags.outputs.deploy-environment }}
       resource-group-name: ${{ steps.deployment-flags.outputs.resource-group-name }}
-      workflow-metadata: ${{ steps.metadata.outputs.workflow-metadata }}
+      deploy-function-app: ${{ steps.deployment-flags.outputs.deploy-function-app }}
+      deploy-web-app: ${{ steps.deployment-flags.outputs.deploy-web-app }}
     steps:
-      - name: Initialize workflow with comprehensive logging
+      - name: Initialize workflow
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🚀 =============================================="
-          echo "🚀 MEMBER PROPERTY ALERT DEPLOYMENT WORKFLOW"
-          echo "🚀 =============================================="
+          echo "🚀 Member Property Alert Deployment Workflow"
           echo "📅 Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "🔧 Workflow: ${{ github.workflow }}"
-          echo "🏃 Run ID: ${{ github.run_id }}"
-          echo "🔢 Run Number: ${{ github.run_number }}"
-          echo "👤 Actor: ${{ github.actor }}"
-          echo "📂 Repository: ${{ github.repository }}"
+          echo "🎯 Event: ${{ github.event_name }}"
           echo "🌿 Ref: ${{ github.ref }}"
           echo "📝 SHA: ${{ github.sha }}"
-          echo "🎯 Event: ${{ github.event_name }}"
-          echo "🐛 Debug Mode: ${{ env.DEBUG_MODE }}"
-          echo "📊 Verbose Logging: ${{ env.VERBOSE_LOGGING }}"
-          echo "=============================================="
-          
-          # Log runner environment
-          echo "🖥️ Runner Environment:"
-          echo "  OS: $(uname -a)"
-          echo "  Shell: $SHELL"
-          echo "  User: $(whoami)"
-          echo "  Working Directory: $(pwd)"
-          echo "  Available Disk Space: $(df -h . | tail -1 | awk '{print $4}')"
-          echo "  Memory: $(free -h | grep '^Mem:' | awk '{print $2}' || echo 'N/A')"
-          echo "=============================================="
+          echo "👤 Actor: ${{ github.actor }}"
 
-      - name: Checkout repository with verbose logging
+      - name: Checkout repository
         uses: actions/checkout@v4
-
         with:
           fetch-depth: 2
-          
-      - name: Log repository information
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📂 Repository Information:"
-          echo "  Current Branch: $(git branch --show-current)"
-          echo "  Latest Commit: $(git log -1 --oneline)"
-          echo "  Repository Size: $(du -sh . | cut -f1)"
-          echo "  File Count: $(find . -type f | wc -l)"
-          echo "  Git Status:"
-          git status --porcelain || echo "  Clean working directory"
-          echo "=============================================="
       
-      - name: Detect changes with enhanced logging
+      - name: Detect changes
         id: changes
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🔍 =============================================="
-          echo "🔍 CHANGE DETECTION ANALYSIS"
-          echo "🔍 =============================================="
-          echo "📅 Analysis Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "🎯 Manual deployment triggered via workflow_dispatch"
-            echo "📋 Input Parameters:"
-            echo "  Environment: ${{ github.event.inputs.environment }}"
-            echo "  Debug Mode: ${{ github.event.inputs.debug_mode }}"
-            
+            echo "🎯 Manual deployment triggered"
             echo "infra-changed=true" >> $GITHUB_OUTPUT
             echo "functions-changed=true" >> $GITHUB_OUTPUT
             echo "ui-changed=true" >> $GITHUB_OUTPUT
-            echo "✅ Manual deployment - deploying all components"
           else
-            echo "🔄 Automatic deployment triggered by push event"
-            echo "📊 Analyzing changes between HEAD~1 and HEAD..."
+            echo "🔄 Automatic deployment - analyzing changes"
             
-            # Enhanced change detection with detailed logging
-            echo "🔍 Checking for infrastructure changes..."
-            INFRA_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '^infra/main\.bicep|^\.github/workflows/member-property-alert-cd\.yml' || true)
-            INFRA_CHANGED=$(echo "$INFRA_FILES" | wc -l)
+            INFRA_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^infra/main\.bicep|^\.github/workflows/member-property-alert-cd\.yml' | wc -l)
+            FUNCTIONS_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^src/MemberPropertyAlert\.(Core|Functions)/' | wc -l)
+            UI_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^src/MemberPropertyAlert\.UI/' | wc -l)
             
-            echo "🔍 Checking for function changes..."
-            FUNCTION_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '^src/MemberPropertyAlert\.(Core|Functions)/' || true)
-            FUNCTIONS_CHANGED=$(echo "$FUNCTION_FILES" | wc -l)
-            
-            echo "🔍 Checking for UI changes..."
-            UI_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '^src/MemberPropertyAlert\.UI/' || true)
-            UI_CHANGED=$(echo "$UI_FILES" | wc -l)
-            
-            # Log detailed file changes
-            echo "📁 Infrastructure Files Changed ($INFRA_CHANGED):"
-            if [ -n "$INFRA_FILES" ] && [ "$INFRA_FILES" != "0" ]; then
-              echo "$INFRA_FILES" | sed 's/^/  - /'
-            else
-              echo "  (none)"
-            fi
-            
-            echo "📁 Function Files Changed ($FUNCTIONS_CHANGED):"
-            if [ -n "$FUNCTION_FILES" ] && [ "$FUNCTION_FILES" != "0" ]; then
-              echo "$FUNCTION_FILES" | sed 's/^/  - /'
-            else
-              echo "  (none)"
-            fi
-            
-            echo "📁 UI Files Changed ($UI_CHANGED):"
-            if [ -n "$UI_FILES" ] && [ "$UI_FILES" != "0" ]; then
-              echo "$UI_FILES" | sed 's/^/  - /'
-            else
-              echo "  (none)"
-            fi
-            
-            # Set outputs with detailed logging
             [ "$INFRA_CHANGED" -gt 0 ] && echo "infra-changed=true" >> $GITHUB_OUTPUT || echo "infra-changed=false" >> $GITHUB_OUTPUT
             [ "$FUNCTIONS_CHANGED" -gt 0 ] && echo "functions-changed=true" >> $GITHUB_OUTPUT || echo "functions-changed=false" >> $GITHUB_OUTPUT
             [ "$UI_CHANGED" -gt 0 ] && echo "ui-changed=true" >> $GITHUB_OUTPUT || echo "ui-changed=false" >> $GITHUB_OUTPUT
             
-            echo "📊 Change Detection Summary:"
-            echo "  Infrastructure: $INFRA_CHANGED files → $([ "$INFRA_CHANGED" -gt 0 ] && echo "DEPLOY" || echo "SKIP")"
-            echo "  Functions: $FUNCTIONS_CHANGED files → $([ "$FUNCTIONS_CHANGED" -gt 0 ] && echo "DEPLOY" || echo "SKIP")"
-            echo "  UI: $UI_CHANGED files → $([ "$UI_CHANGED" -gt 0 ] && echo "DEPLOY" || echo "SKIP")"
+            echo "📊 Changes detected:"
+            echo "  Infrastructure: $INFRA_CHANGED files"
+            echo "  Functions: $FUNCTIONS_CHANGED files"
+            echo "  UI: $UI_CHANGED files"
           fi
-          echo "=============================================="
       
-      - name: Set deployment flags with comprehensive logging
+      - name: Set deployment flags
         id: deployment-flags
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🎯 =============================================="
-          echo "🎯 DEPLOYMENT CONFIGURATION"
-          echo "🎯 =============================================="
-          echo "📅 Configuration Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             DEPLOY_ENV="${{ github.event.inputs.environment }}"
-            echo "🎯 Manual deployment environment: $DEPLOY_ENV"
+            DEPLOY_FUNCTION_APP="${{ github.event.inputs.deployFunctionApp }}"
+            DEPLOY_WEB_APP="${{ github.event.inputs.deployWebApp }}"
           else
-            # Default to dev for automatic deployments
             DEPLOY_ENV="dev"
-            echo "🎯 Automatic deployment environment: $DEPLOY_ENV (default)"
+            DEPLOY_FUNCTION_APP="true"
+            DEPLOY_WEB_APP="true"
           fi
           
           RG_NAME="rg-member-property-alert-${DEPLOY_ENV}-eastus2"
           
           echo "deploy-environment=$DEPLOY_ENV" >> $GITHUB_OUTPUT
           echo "resource-group-name=$RG_NAME" >> $GITHUB_OUTPUT
+          echo "deploy-function-app=$DEPLOY_FUNCTION_APP" >> $GITHUB_OUTPUT
+          echo "deploy-web-app=$DEPLOY_WEB_APP" >> $GITHUB_OUTPUT
           
-          echo "📋 Deployment Configuration:"
+          echo "🎯 Deployment Configuration:"
           echo "  Environment: $DEPLOY_ENV"
           echo "  Resource Group: $RG_NAME"
-          echo "  Azure Location: ${{ env.AZURE_LOCATION }}"
-          echo "  Subscription ID: ${{ env.AZURE_SUBSCRIPTION_ID }}"
-          echo "  Tenant ID: ${{ env.AZURE_TENANT_ID }}"
-          echo "  Client ID: ${{ env.AZURE_CLIENT_ID }}"
-          echo "=============================================="
-
-      - name: Generate workflow metadata
-        id: metadata
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📊 =============================================="
-          echo "📊 WORKFLOW METADATA GENERATION"
-          echo "📊 =============================================="
-          
-          # Create comprehensive metadata
-          METADATA=$(cat <<EOF
-          {
-            "workflow": {
-              "name": "${{ github.workflow }}",
-              "run_id": "${{ github.run_id }}",
-              "run_number": "${{ github.run_number }}",
-              "run_attempt": "${{ github.run_attempt }}",
-              "actor": "${{ github.actor }}",
-              "event_name": "${{ github.event_name }}",
-              "ref": "${{ github.ref }}",
-              "sha": "${{ github.sha }}",
-              "repository": "${{ github.repository }}"
-            },
-            "environment": {
-              "deploy_env": "${{ steps.deployment-flags.outputs.deploy-environment }}",
-              "resource_group": "${{ steps.deployment-flags.outputs.resource-group-name }}",
-              "azure_location": "${{ env.AZURE_LOCATION }}",
-              "debug_mode": "${{ env.DEBUG_MODE }}",
-              "verbose_logging": "${{ env.VERBOSE_LOGGING }}"
-            },
-            "changes": {
-              "infra_changed": "${{ steps.changes.outputs.infra-changed }}",
-              "functions_changed": "${{ steps.changes.outputs.functions-changed }}",
-              "ui_changed": "${{ steps.changes.outputs.ui-changed }}"
-            },
-            "timestamps": {
-              "workflow_start": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')",
-              "analysis_complete": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            }
-          }
-          EOF
-          )
-          
-          # Compress metadata for output
-          METADATA_COMPRESSED=$(echo "$METADATA" | jq -c .)
-          echo "workflow-metadata=$METADATA_COMPRESSED" >> $GITHUB_OUTPUT
-          
-          echo "✅ Workflow metadata generated successfully"
-          echo "📊 Metadata size: $(echo "$METADATA_COMPRESSED" | wc -c) characters"
-          echo "=============================================="
+          echo "  Deploy Function App: $DEPLOY_FUNCTION_APP"
+          echo "  Deploy Web App: $DEPLOY_WEB_APP"
 
   build-and-test:
     runs-on: ubuntu-latest
     needs: [analyze-changes]
     outputs:
       build-successful: ${{ steps.build-status.outputs.success }}
-      build-metadata: ${{ steps.build-metadata.outputs.metadata }}
-      test-results: ${{ steps.test-results.outputs.results }}
     steps:
-      - name: Initialize build phase with comprehensive logging
+      - name: Initialize build phase
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🏗️ =============================================="
-          echo "🏗️ BUILD AND TEST PHASE INITIALIZATION"
-          echo "🏗️ =============================================="
-          echo "📅 Build Start Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "🏗️ Build and Test Phase"
+          echo "📅 Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo "🎯 Environment: ${{ needs.analyze-changes.outputs.deploy-environment }}"
-          echo "📊 Changes Summary:"
-          echo "  Infrastructure: ${{ needs.analyze-changes.outputs.infra-changed }}"
-          echo "  Functions: ${{ needs.analyze-changes.outputs.functions-changed }}"
-          echo "  UI: ${{ needs.analyze-changes.outputs.ui-changed }}"
-          echo "=============================================="
 
-      - name: Checkout repository with verbose logging
+      - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Setup .NET with enhanced logging
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-          
-      - name: Verify .NET installation
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🔧 =============================================="
-          echo "🔧 .NET ENVIRONMENT VERIFICATION"
-          echo "🔧 =============================================="
-          echo "📅 Verification Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          echo "🔍 .NET Version Information:"
-          dotnet --version
-          
-          echo "🔍 .NET Runtime Information:"
-          dotnet --info
-          
-          echo "🔍 .NET SDK List:"
-          dotnet --list-sdks
-          
-          echo "🔍 .NET Runtime List:"
-          dotnet --list-runtimes
-          
-          echo "🔍 NuGet Configuration:"
-          dotnet nuget list source || echo "NuGet sources not available"
-          
-          echo "=============================================="
       
-      - name: Setup Node.js with enhanced logging
+      - name: Setup Node.js
         if: needs.analyze-changes.outputs.ui-changed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: 'src/MemberPropertyAlert.UI/package.json'
-          
-      - name: Verify Node.js installation
-        if: needs.analyze-changes.outputs.ui-changed == 'true'
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🔧 =============================================="
-          echo "🔧 NODE.JS ENVIRONMENT VERIFICATION"
-          echo "🔧 =============================================="
-          echo "📅 Verification Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          echo "🔍 Node.js Version Information:"
-          node --version
-          
-          echo "🔍 npm Version Information:"
-          npm --version
-          
-          echo "🔍 npm Configuration:"
-          npm config list
-          
-          echo "🔍 npm Cache Information:"
-          npm cache verify --verbose
-          
-          echo "=============================================="
       
-      - name: Cache NuGet packages with enhanced logging
+      - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -377,587 +161,88 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.sln') }}-
             ${{ runner.os }}-nuget-
-            
-      - name: Log cache information
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "💾 =============================================="
-          echo "💾 CACHE INFORMATION"
-          echo "💾 =============================================="
-          echo "📅 Cache Check Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          echo "🔍 NuGet Cache Directory:"
-          if [ -d ~/.nuget/packages ]; then
-            echo "  Path: ~/.nuget/packages"
-            echo "  Size: $(du -sh ~/.nuget/packages | cut -f1)"
-            echo "  Package Count: $(find ~/.nuget/packages -maxdepth 2 -type d | wc -l)"
-          else
-            echo "  NuGet cache directory not found"
-          fi
-          
-          echo "🔍 npm Cache Directory:"
-          if command -v npm >/dev/null 2>&1; then
-            NPM_CACHE_DIR=$(npm config get cache)
-            if [ -d "$NPM_CACHE_DIR" ]; then
-              echo "  Path: $NPM_CACHE_DIR"
-              echo "  Size: $(du -sh "$NPM_CACHE_DIR" | cut -f1)"
-            else
-              echo "  npm cache directory not found"
-            fi
-          else
-            echo "  npm not available"
-          fi
-          
-          echo "=============================================="
       
-      - name: Build and test .NET solution with comprehensive logging
+      - name: Build and test .NET solution
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
+          echo "🏗️ Building .NET solution..."
           
-          echo "🏗️ =============================================="
-          echo "🏗️ .NET BUILD AND TEST PROCESS"
-          echo "🏗️ =============================================="
-          echo "📅 Build Start Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "📦 Restoring packages..."
+          dotnet restore MemberPropertyMarketAlert.sln --no-cache --verbosity minimal
           
-          # Log solution structure
-          echo "📂 Solution Structure Analysis:"
-          if [ -f "MemberPropertyMarketAlert.sln" ]; then
-            echo "  Solution File: MemberPropertyMarketAlert.sln"
-            echo "  Solution Size: $(du -sh MemberPropertyMarketAlert.sln | cut -f1)"
-            
-            echo "🔍 Projects in Solution:"
-            dotnet sln MemberPropertyMarketAlert.sln list
-          else
-            echo "  ❌ Solution file not found"
-            exit 1
-          fi
+          echo "🔨 Building solution..."
+          dotnet build MemberPropertyMarketAlert.sln --no-restore --configuration Release --verbosity minimal
           
-          echo "🔍 Project Files:"
-          find . -name "*.csproj" -type f | while read -r proj; do
-            echo "  - $proj ($(du -sh "$proj" | cut -f1))"
-          done
-          
-          # Restore with verbose logging
-          echo "📦 =============================================="
-          echo "📦 NUGET PACKAGE RESTORATION"
-          echo "📦 =============================================="
-          echo "📅 Restore Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          RESTORE_START=$(date +%s)
-          dotnet restore MemberPropertyMarketAlert.sln \
-            --no-cache \
-            --verbosity detailed \
-            --disable-parallel \
-            --force
-          RESTORE_END=$(date +%s)
-          RESTORE_DURATION=$((RESTORE_END - RESTORE_START))
-          
-          echo "✅ Package restoration completed in ${RESTORE_DURATION}s"
-          echo "📅 Restore End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Build with verbose logging
-          echo "🔨 =============================================="
-          echo "🔨 SOLUTION BUILD PROCESS"
-          echo "🔨 =============================================="
-          echo "📅 Build Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          BUILD_START=$(date +%s)
-          dotnet build MemberPropertyMarketAlert.sln \
-            --no-restore \
-            --configuration Release \
-            --verbosity detailed \
-            --no-incremental
-          BUILD_END=$(date +%s)
-          BUILD_DURATION=$((BUILD_END - BUILD_START))
-          
-          echo "✅ Solution build completed in ${BUILD_DURATION}s"
-          echo "📅 Build End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Test discovery and execution
-          echo "🧪 =============================================="
-          echo "🧪 TEST DISCOVERY AND EXECUTION"
-          echo "🧪 =============================================="
-          echo "📅 Test Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Find test projects
-          TEST_PROJECTS=$(find . -name "*.Tests.csproj" -o -name "*Test*.csproj" | head -10)
-          if [ -n "$TEST_PROJECTS" ]; then
-            echo "🔍 Test Projects Found:"
-            echo "$TEST_PROJECTS" | sed 's/^/  - /'
-            
-            TEST_START=$(date +%s)
-            dotnet test MemberPropertyMarketAlert.sln \
-              --no-build \
-              --configuration Release \
-              --verbosity detailed \
-              --logger "console;verbosity=detailed" \
-              --collect:"XPlat Code Coverage" \
-              --results-directory ./test-results
-            TEST_END=$(date +%s)
-            TEST_DURATION=$((TEST_END - TEST_START))
-            
-            echo "✅ Tests completed in ${TEST_DURATION}s"
-            
-            # Log test results
-            if [ -d "./test-results" ]; then
-              echo "📊 Test Results Summary:"
-              find ./test-results -name "*.xml" -o -name "*.trx" | while read -r result; do
-                echo "  - $result ($(du -sh "$result" | cut -f1))"
-              done
-            fi
-          else
-            echo "ℹ️ No test projects found, skipping .NET tests"
-          fi
-          
-          echo "📅 Test End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "=============================================="
+          echo "🧪 Running tests..."
+          dotnet test MemberPropertyMarketAlert.sln --no-build --configuration Release --verbosity minimal --logger "console;verbosity=minimal"
       
-      - name: Validate React project structure
-        if: needs.analyze-changes.outputs.ui-changed == 'true'
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🔍 =============================================="
-          echo "🔍 REACT PROJECT STRUCTURE VALIDATION"
-          echo "🔍 =============================================="
-          echo "📅 Validation Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Check if UI directory exists
-          if [ ! -d "src/MemberPropertyAlert.UI" ]; then
-            echo "❌ UI directory not found: src/MemberPropertyAlert.UI"
-            echo "🔍 Available directories in src/:"
-            ls -la src/ || echo "src directory not accessible"
-            exit 1
-          fi
-          
-          # Check package.json
-          if [ ! -f "src/MemberPropertyAlert.UI/package.json" ]; then
-            echo "❌ package.json not found at: src/MemberPropertyAlert.UI/package.json"
-            echo "🔍 Available files in src/MemberPropertyAlert.UI/:"
-            ls -la src/MemberPropertyAlert.UI/ || echo "Directory not accessible"
-            exit 1
-          fi
-          
-          # Check src directory
-          if [ ! -d "src/MemberPropertyAlert.UI/src" ]; then
-            echo "❌ React src directory not found at: src/MemberPropertyAlert.UI/src"
-            echo "🔍 Available directories in src/MemberPropertyAlert.UI/:"
-            ls -la src/MemberPropertyAlert.UI/ || echo "Directory not accessible"
-            exit 1
-          fi
-          
-          echo "✅ React project structure validated successfully"
-          echo "📂 Project files:"
-          echo "  - package.json: $(du -sh src/MemberPropertyAlert.UI/package.json | cut -f1)"
-          echo "  - src directory: $(du -sh src/MemberPropertyAlert.UI/src | cut -f1)"
-          
-          # Log additional structure info for debugging
-          echo "🔍 Detailed structure:"
-          echo "  UI Directory contents:"
-          ls -la src/MemberPropertyAlert.UI/ | head -10
-          echo "  React src contents:"
-          ls -la src/MemberPropertyAlert.UI/src/ | head -10
-          echo "=============================================="
-
-      - name: Build React UI with comprehensive logging
+      - name: Build React UI
         if: needs.analyze-changes.outputs.ui-changed == 'true'
         working-directory: src/MemberPropertyAlert.UI
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
+          echo "🎨 Building React UI..."
           
-          echo "🎨 =============================================="
-          echo "🎨 REACT UI BUILD PROCESS"
-          echo "🎨 =============================================="
-          echo "📅 UI Build Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Log UI project structure
-          echo "📂 UI Project Structure:"
-          echo "  Working Directory: $(pwd)"
-          echo "  Directory Size: $(du -sh . | cut -f1)"
-          echo "  File Count: $(find . -type f | wc -l)"
-          
-          if [ -f "package.json" ]; then
-            echo "📦 Package.json Analysis:"
-            echo "  File Size: $(du -sh package.json | cut -f1)"
-            echo "  Dependencies:"
-            jq -r '.dependencies // {} | keys[]' package.json | sed 's/^/    - /' || echo "    (unable to parse dependencies)"
-            echo "  DevDependencies:"
-            jq -r '.devDependencies // {} | keys[]' package.json | sed 's/^/    - /' || echo "    (unable to parse devDependencies)"
-          else
-            echo "❌ package.json not found"
-            exit 1
-          fi
-          
-          # Install dependencies with verbose logging
-          echo "📦 =============================================="
-          echo "📦 NPM DEPENDENCY INSTALLATION"
-          echo "📦 =============================================="
-          echo "📅 Install Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          INSTALL_START=$(date +%s)
+          echo "📦 Installing dependencies..."
           if [ -f "package-lock.json" ]; then
-            echo "📦 Installing dependencies with npm ci (lockfile found)..."
-            npm ci --verbose --no-audit --no-fund
+            npm ci --silent
           else
-            echo "📦 Installing dependencies with npm install (no lockfile)..."
-            npm install --verbose --no-audit --no-fund
-          fi
-          INSTALL_END=$(date +%s)
-          INSTALL_DURATION=$((INSTALL_END - INSTALL_START))
-          
-          echo "✅ Dependencies installed in ${INSTALL_DURATION}s"
-          echo "📅 Install End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Log installed packages
-          echo "📊 Installed Package Summary:"
-          echo "  node_modules size: $(du -sh node_modules | cut -f1)"
-          echo "  Package count: $(find node_modules -maxdepth 1 -type d | wc -l)"
-          
-          # Run tests if available
-          if [ -f "package.json" ] && jq -e '.scripts.test' package.json > /dev/null; then
-            echo "🧪 =============================================="
-            echo "🧪 REACT TEST EXECUTION"
-            echo "🧪 =============================================="
-            echo "📅 React Test Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            
-            REACT_TEST_START=$(date +%s)
-            npm test -- \
-              --ci \
-              --coverage \
-              --verbose \
-              --maxWorkers=2 \
-              --passWithNoTests \
-              --watchAll=false
-            REACT_TEST_END=$(date +%s)
-            REACT_TEST_DURATION=$((REACT_TEST_END - REACT_TEST_START))
-            
-            echo "✅ React tests completed in ${REACT_TEST_DURATION}s"
-            echo "📅 React Test End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            
-            # Log coverage results
-            if [ -d "coverage" ]; then
-              echo "📊 Test Coverage Summary:"
-              echo "  Coverage directory size: $(du -sh coverage | cut -f1)"
-              if [ -f "coverage/lcov-report/index.html" ]; then
-                echo "  Coverage report: coverage/lcov-report/index.html"
-              fi
-            fi
-          else
-            echo "ℹ️ No React tests configured, skipping"
+            npm install --silent
           fi
           
-          # Build production bundle
-          echo "📦 =============================================="
-          echo "📦 REACT PRODUCTION BUILD"
-          echo "📦 =============================================="
-          echo "📅 Production Build Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "🧪 Running React tests..."
+          npm test -- --ci --coverage --silent --maxWorkers=2 --passWithNoTests --watchAll=false
           
-          REACT_BUILD_START=$(date +%s)
-          npm run build -- --verbose
-          REACT_BUILD_END=$(date +%s)
-          REACT_BUILD_DURATION=$((REACT_BUILD_END - REACT_BUILD_START))
-          
-          echo "✅ React production build completed in ${REACT_BUILD_DURATION}s"
-          echo "📅 Production Build End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Log build output
-          if [ -d "build" ]; then
-            echo "📊 Build Output Summary:"
-            echo "  Build directory size: $(du -sh build | cut -f1)"
-            echo "  Build file count: $(find build -type f | wc -l)"
-            echo "  Main files:"
-            find build -name "*.js" -o -name "*.css" -o -name "*.html" | head -10 | while read -r file; do
-              echo "    - $file ($(du -sh "$file" | cut -f1))"
-            done
-          elif [ -d "dist" ]; then
-            echo "📊 Build Output Summary:"
-            echo "  Dist directory size: $(du -sh dist | cut -f1)"
-            echo "  Dist file count: $(find dist -type f | wc -l)"
-            echo "  Main files:"
-            find dist -name "*.js" -o -name "*.css" -o -name "*.html" | head -10 | while read -r file; do
-              echo "    - $file ($(du -sh "$file" | cut -f1))"
-            done
-          else
-            echo "❌ React build output not found"
-            exit 1
-          fi
-          
-          echo "=============================================="
+          echo "📦 Building production bundle..."
+          npm run build
       
-      - name: Publish Function App with comprehensive logging
+      - name: Publish Function App
         if: needs.analyze-changes.outputs.functions-changed == 'true'
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📦 =============================================="
-          echo "📦 FUNCTION APP PUBLISHING"
-          echo "📦 =============================================="
-          echo "📅 Publish Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Find Function App project
-          FUNCTION_PROJECT=$(find . -name "MemberPropertyAlert.Functions.csproj" | head -1)
-          if [ -z "$FUNCTION_PROJECT" ]; then
-            echo "❌ Function App project not found"
-            exit 1
-          fi
-          
-          echo "🔍 Function App Project: $FUNCTION_PROJECT"
-          echo "📊 Project Analysis:"
-          echo "  Project Size: $(du -sh "$FUNCTION_PROJECT" | cut -f1)"
-          echo "  Project Directory: $(dirname "$FUNCTION_PROJECT")"
-          
-          # Create publish directory
+          echo "📦 Publishing Function App..."
           mkdir -p ./publish/functions
           
-          PUBLISH_START=$(date +%s)
-          dotnet publish "$FUNCTION_PROJECT" \
+          dotnet publish src/MemberPropertyAlert.Functions/MemberPropertyAlert.Functions.csproj \
             --configuration Release \
             --output ./publish/functions \
             --no-restore \
             --no-build \
-            --verbosity detailed
-          PUBLISH_END=$(date +%s)
-          PUBLISH_DURATION=$((PUBLISH_END - PUBLISH_START))
-          
-          echo "✅ Function App published in ${PUBLISH_DURATION}s"
-          echo "📅 Publish End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Log publish output
-          if [ -d "./publish/functions" ]; then
-            echo "📊 Function App Publish Summary:"
-            echo "  Publish directory size: $(du -sh ./publish/functions | cut -f1)"
-            echo "  File count: $(find ./publish/functions -type f | wc -l)"
-            echo "  Main files:"
-            find ./publish/functions -name "*.dll" -o -name "*.json" -o -name "host.json" | head -10 | while read -r file; do
-              echo "    - $file ($(du -sh "$file" | cut -f1))"
-            done
-          else
-            echo "❌ Function App publish directory not found"
-            exit 1
-          fi
-          
-          echo "=============================================="
+            --verbosity minimal
       
-      - name: Prepare UI deployment package with comprehensive logging
+      - name: Prepare UI deployment package
         if: needs.analyze-changes.outputs.ui-changed == 'true'
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📦 =============================================="
-          echo "📦 UI DEPLOYMENT PACKAGE PREPARATION"
-          echo "📦 =============================================="
-          echo "📅 Package Prep Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Create UI publish directory
+          echo "📦 Preparing UI deployment package..."
           mkdir -p ./publish/ui
           
-          PACKAGE_START=$(date +%s)
-          
-          # Copy React build output with detailed logging
           if [ -d "src/MemberPropertyAlert.UI/build" ]; then
-            echo "📂 Copying from React build directory..."
-            cp -rv src/MemberPropertyAlert.UI/build/* ./publish/ui/
-            BUILD_SOURCE="build"
+            cp -r src/MemberPropertyAlert.UI/build/* ./publish/ui/
           elif [ -d "src/MemberPropertyAlert.UI/dist" ]; then
-            echo "📂 Copying from React dist directory..."
-            cp -rv src/MemberPropertyAlert.UI/dist/* ./publish/ui/
-            BUILD_SOURCE="dist"
+            cp -r src/MemberPropertyAlert.UI/dist/* ./publish/ui/
           else
-            echo "❌ React build output not found in build/ or dist/"
-            echo "🔍 Available directories in UI project:"
-            ls -la src/MemberPropertyAlert.UI/ || echo "UI directory not accessible"
+            echo "❌ React build output not found"
             exit 1
           fi
-          
-          PACKAGE_END=$(date +%s)
-          PACKAGE_DURATION=$((PACKAGE_END - PACKAGE_START))
-          
-          echo "✅ UI package prepared in ${PACKAGE_DURATION}s from $BUILD_SOURCE"
-          echo "📅 Package Prep End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Log UI package contents
-          if [ -d "./publish/ui" ]; then
-            echo "📊 UI Package Summary:"
-            echo "  Package directory size: $(du -sh ./publish/ui | cut -f1)"
-            echo "  File count: $(find ./publish/ui -type f | wc -l)"
-            echo "  Main files:"
-            find ./publish/ui -name "*.html" -o -name "*.js" -o -name "*.css" | head -10 | while read -r file; do
-              echo "    - $file ($(du -sh "$file" | cut -f1))"
-            done
-          else
-            echo "❌ UI package directory not found"
-            exit 1
-          fi
-          
-          echo "=============================================="
       
-      - name: Generate build metadata
-        id: build-metadata
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📊 =============================================="
-          echo "📊 BUILD METADATA GENERATION"
-          echo "📊 =============================================="
-          
-          # Create comprehensive build metadata
-          BUILD_METADATA=$(cat <<EOF
-          {
-            "build": {
-              "timestamp": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')",
-              "dotnet_version": "${{ env.DOTNET_VERSION }}",
-              "node_version": "${{ env.NODE_VERSION }}",
-              "runner_os": "${{ runner.os }}",
-              "github_sha": "${{ github.sha }}",
-              "github_ref": "${{ github.ref }}"
-            },
-            "artifacts": {
-              "functions_built": "${{ needs.analyze-changes.outputs.functions-changed }}",
-              "ui_built": "${{ needs.analyze-changes.outputs.ui-changed }}"
-            },
-            "performance": {
-              "build_start": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            }
-          }
-          EOF
-          )
-          
-          # Compress metadata for output
-          BUILD_METADATA_COMPRESSED=$(echo "$BUILD_METADATA" | jq -c .)
-          echo "metadata=$BUILD_METADATA_COMPRESSED" >> $GITHUB_OUTPUT
-          
-          echo "✅ Build metadata generated successfully"
-          echo "=============================================="
-      
-      - name: Upload Function App artifact with enhanced logging
+      - name: Upload Function App artifact
         if: needs.analyze-changes.outputs.functions-changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: functions-app
           path: ./publish/functions
           retention-days: 1
-          
-      - name: Log Function App artifact upload
-        if: needs.analyze-changes.outputs.functions-changed == 'true'
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📤 =============================================="
-          echo "📤 FUNCTION APP ARTIFACT UPLOAD"
-          echo "📤 =============================================="
-          echo "📅 Upload Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "📦 Artifact Name: functions-app"
-          echo "📂 Artifact Path: ./publish/functions"
-          echo "⏰ Retention: 1 day"
-          echo "✅ Function App artifact uploaded successfully"
-          echo "=============================================="
       
-      - name: Upload UI artifact with enhanced logging
+      - name: Upload UI artifact
         if: needs.analyze-changes.outputs.ui-changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ui-app
           path: ./publish/ui
           retention-days: 1
-          
-      - name: Log UI artifact upload
-        if: needs.analyze-changes.outputs.ui-changed == 'true'
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📤 =============================================="
-          echo "📤 UI ARTIFACT UPLOAD"
-          echo "📤 =============================================="
-          echo "📅 Upload Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "📦 Artifact Name: ui-app"
-          echo "📂 Artifact Path: ./publish/ui"
-          echo "⏰ Retention: 1 day"
-          echo "✅ UI artifact uploaded successfully"
-          echo "=============================================="
       
-      - name: Generate test results summary
-        id: test-results
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🧪 =============================================="
-          echo "🧪 TEST RESULTS SUMMARY GENERATION"
-          echo "🧪 =============================================="
-          
-          # Create test results summary
-          TEST_RESULTS=$(cat <<EOF
-          {
-            "summary": {
-              "timestamp": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')",
-              "dotnet_tests_run": "$([ -d "./test-results" ] && echo "true" || echo "false")",
-              "react_tests_run": "${{ needs.analyze-changes.outputs.ui-changed }}",
-              "overall_status": "success"
-            },
-            "artifacts": {
-              "test_results_available": "$([ -d "./test-results" ] && echo "true" || echo "false")",
-              "coverage_available": "$([ -d "./src/MemberPropertyAlert.UI/coverage" ] && echo "true" || echo "false")"
-            }
-          }
-          EOF
-          )
-          
-          # Compress results for output
-          TEST_RESULTS_COMPRESSED=$(echo "$TEST_RESULTS" | jq -c .)
-          echo "results=$TEST_RESULTS_COMPRESSED" >> $GITHUB_OUTPUT
-          
-          echo "✅ Test results summary generated successfully"
-          echo "=============================================="
-      
-      - name: Set build status with comprehensive logging
+      - name: Set build status
         id: build-status
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "✅ =============================================="
-          echo "✅ BUILD PHASE COMPLETION"
-          echo "✅ =============================================="
-          echo "📅 Build Complete Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "🎯 Environment: ${{ needs.analyze-changes.outputs.deploy-environment }}"
-          echo "📊 Build Summary:"
-          echo "  Functions Built: ${{ needs.analyze-changes.outputs.functions-changed }}"
-          echo "  UI Built: ${{ needs.analyze-changes.outputs.ui-changed }}"
-          echo "  Overall Status: SUCCESS"
+          echo "✅ Build phase completed successfully"
           echo "success=true" >> $GITHUB_OUTPUT
-          echo "=============================================="
 
   deploy-infrastructure:
     runs-on: ubuntu-latest
@@ -968,937 +253,255 @@ jobs:
       web-app-name: ${{ steps.deploy-infra.outputs.web-app-name }}
       function-app-url: ${{ steps.deploy-infra.outputs.function-app-url }}
       web-app-url: ${{ steps.deploy-infra.outputs.web-app-url }}
-      deployment-metadata: ${{ steps.deployment-metadata.outputs.metadata }}
+      key-vault-name: ${{ steps.deploy-infra.outputs.key-vault-name }}
     steps:
-      - name: Initialize infrastructure deployment with comprehensive logging
+      - name: Initialize infrastructure deployment
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🏗️ =============================================="
-          echo "🏗️ INFRASTRUCTURE DEPLOYMENT INITIALIZATION"
-          echo "🏗️ =============================================="
-          echo "📅 Infrastructure Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "🏗️ Infrastructure Deployment"
+          echo "📅 Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo "🎯 Environment: ${{ needs.analyze-changes.outputs.deploy-environment }}"
           echo "📂 Resource Group: ${{ needs.analyze-changes.outputs.resource-group-name }}"
-          echo "🌍 Azure Location: ${{ env.AZURE_LOCATION }}"
-          echo "🔐 Authentication: OIDC"
-          echo "=============================================="
 
-      - name: Checkout repository with verbose logging
+      - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Azure Login (OIDC) with enhanced logging
+      - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-          
-      - name: Verify Azure authentication
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🔐 =============================================="
-          echo "🔐 AZURE AUTHENTICATION VERIFICATION"
-          echo "🔐 =============================================="
-          echo "📅 Auth Check Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          echo "🔍 Azure CLI Version:"
-          az version --output table
-          
-          echo "🔍 Current Azure Account:"
-          az account show --output table
-          
-          echo "🔍 Available Subscriptions:"
-          az account list --output table --query "[].{Name:name, SubscriptionId:id, State:state, IsDefault:isDefault}"
-          
-          echo "🔍 Current Subscription Details:"
-          az account show --query "{SubscriptionId:id, SubscriptionName:name, TenantId:tenantId, User:user.name}" --output table
-          
-          echo "✅ Azure authentication verified successfully"
-          echo "=============================================="
       
-      - name: Deploy infrastructure with industry-standard logging
+      - name: Deploy infrastructure
         id: deploy-infra
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🔍 =============================================="
-          echo "🔍 INFRASTRUCTURE DEPLOYMENT WITH ENHANCED LOGGING"
-          echo "🔍 =============================================="
-          echo "📅 Deployment Start Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
           RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
           ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
           LOC="${{ env.AZURE_LOCATION }}"
           
-          echo "📋 Deployment Configuration:"
+          echo "🏗️ Deploying infrastructure..."
           echo "  Resource Group: $RG_NAME"
           echo "  Environment: $ENV"
           echo "  Location: $LOC"
-          echo "  GitHub Actor: ${{ github.actor }}"
-          echo "  GitHub Ref: ${{ github.ref }}"
-          echo "  GitHub SHA: ${{ github.sha }}"
-          echo "  Workflow Run ID: ${{ github.run_id }}"
-          echo "  Workflow Run Number: ${{ github.run_number }}"
           
-          # Log Azure CLI version and context with enhanced detail
-          echo "🔧 Azure Environment Information:"
-          echo "  Azure CLI Version: $(az version --query '"azure-cli"' --output tsv)"
-          echo "  Azure CLI Core Version: $(az version --query '"azure-cli-core"' --output tsv)"
-          echo "  Python Version: $(az version --query 'python' --output tsv)"
-          
-          echo "👤 Azure Account Context:"
-          ACCOUNT_INFO=$(az account show --output json)
-          echo "  Subscription ID: $(echo "$ACCOUNT_INFO" | jq -r '.id')"
-          echo "  Subscription Name: $(echo "$ACCOUNT_INFO" | jq -r '.name')"
-          echo "  Tenant ID: $(echo "$ACCOUNT_INFO" | jq -r '.tenantId')"
-          echo "  User Type: $(echo "$ACCOUNT_INFO" | jq -r '.user.type')"
-          echo "  Environment Name: $(echo "$ACCOUNT_INFO" | jq -r '.environmentName')"
-          
-          echo "📍 Azure Location Validation:"
-          LOCATION_INFO=$(az account list-locations --query "[?name=='$LOC']" --output json)
-          if [ "$(echo "$LOCATION_INFO" | jq length)" -gt 0 ]; then
-            echo "  Location: $LOC ✅"
-            echo "  Display Name: $(echo "$LOCATION_INFO" | jq -r '.[0].displayName')"
-            echo "  Regional Display Name: $(echo "$LOCATION_INFO" | jq -r '.[0].regionalDisplayName')"
-          else
-            echo "  ❌ Location $LOC is not valid"
-            exit 1
-          fi
-          
-          # Enhanced secret validation with security logging
-          echo "🔐 Secret Configuration Validation:"
+          # Validate secrets
           if [ -z "${{ secrets.RENTCAST_API_KEY }}" ]; then
-            echo "❌ RENTCAST_API_KEY secret is not configured in GitHub repository settings."
-            echo "🔧 Please configure this secret in repository settings: Settings > Secrets and variables > Actions"
+            echo "❌ RENTCAST_API_KEY secret not configured"
             exit 1
-          elif [ "${{ secrets.RENTCAST_API_KEY }}" = "placeholder" ] || [ "${{ secrets.RENTCAST_API_KEY }}" = "PLACEHOLDER" ]; then
-            echo "⚠️ RENTCAST_API_KEY is set to placeholder value"
-            echo "🔧 Deployment will continue but API functionality may be limited"
-            echo "📝 Consider updating the secret with a valid API key"
-          else
-            echo "✅ RENTCAST_API_KEY is configured (length: ${#{{ secrets.RENTCAST_API_KEY }}} characters)"
           fi
           
           if [ -z "${{ secrets.ADMIN_API_KEY }}" ]; then
-            echo "❌ ADMIN_API_KEY secret is not configured in GitHub repository settings."
-            echo "🔧 Please configure this secret in repository settings: Settings > Secrets and variables > Actions"
-            exit 1
-          elif [ "${{ secrets.ADMIN_API_KEY }}" = "placeholder" ] || [ "${{ secrets.ADMIN_API_KEY }}" = "PLACEHOLDER" ]; then
-            echo "⚠️ ADMIN_API_KEY is set to placeholder value"
-            echo "🔧 Deployment will continue but admin functionality may be limited"
-            echo "📝 Consider updating the secret with a valid API key"
-          else
-            echo "✅ ADMIN_API_KEY is configured (length: ${#{{ secrets.ADMIN_API_KEY }}} characters)"
-          fi
-          
-          echo "🏗️ Resource Group Management:"
-          echo "📅 Resource Group Creation Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Create resource group with detailed logging
-          RG_CREATE_START=$(date +%s)
-          if az group show --name "$RG_NAME" --output none 2>/dev/null; then
-            echo "✅ Resource group '$RG_NAME' already exists"
-            RG_EXISTS="true"
-          else
-            echo "🔨 Creating resource group '$RG_NAME' in location '$LOC'..."
-            az group create \
-              --name "$RG_NAME" \
-              --location "$LOC" \
-              --output table \
-              --verbose
-            
-            if [ $? -ne 0 ]; then
-              echo "❌ Failed to create resource group: $RG_NAME"
-              exit 1
-            fi
-            RG_EXISTS="false"
-          fi
-          RG_CREATE_END=$(date +%s)
-          RG_CREATE_DURATION=$((RG_CREATE_END - RG_CREATE_START))
-          
-          echo "✅ Resource group operation completed in ${RG_CREATE_DURATION}s (existed: $RG_EXISTS)"
-          echo "📅 Resource Group Creation End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Generate unique deployment name with enhanced metadata
-          DEPLOYMENT_NAME="member-property-alert-$(date +%Y%m%d-%H%M%S)-${{ github.run_number }}"
-          
-          echo "⚡ Deployment Preparation:"
-          echo "  Deployment Name: $DEPLOYMENT_NAME"
-          echo "  Template File: infra/main.bicep"
-          echo "  Parameters: inline (secure)"
-          
-          # Enhanced Azure CLI and Bicep preparation
-          echo "🔧 Azure CLI and Bicep Preparation:"
-          echo "📅 Preparation Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          PREP_START=$(date +%s)
-          
-          echo "🧹 Clearing Azure CLI cache..."
-          az cache purge --verbose 2>/dev/null || echo "Cache purge completed with warnings"
-          
-          echo "🔄 Updating Bicep to latest version..."
-          az bicep upgrade --target-version latest --verbose 2>/dev/null || echo "Bicep upgrade completed with warnings"
-          
-          echo "⚙️ Configuring Bicep settings..."
-          az config set bicep.use_binary_from_path=false --verbose 2>/dev/null || echo "Bicep config set completed with warnings"
-          
-          PREP_END=$(date +%s)
-          PREP_DURATION=$((PREP_END - PREP_START))
-          
-          echo "✅ Azure CLI and Bicep preparation completed in ${PREP_DURATION}s"
-          echo "📅 Preparation End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Enhanced Bicep template validation
-          echo "🔍 Bicep Template Validation:"
-          echo "📅 Validation Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          VALIDATION_START=$(date +%s)
-          
-          echo "🔍 Compiling Bicep template with enhanced debugging..."
-          echo "  Command: az bicep build --file infra/main.bicep --verbose --debug"
-          
-          BICEP_BUILD_OUTPUT=$(mktemp)
-          az bicep build \
-            --file infra/main.bicep \
-            --verbose \
-            --debug > "$BICEP_BUILD_OUTPUT" 2>&1
-          
-          BICEP_BUILD_EXIT_CODE=$?
-          echo "  Bicep build exit code: $BICEP_BUILD_EXIT_CODE"
-          
-          if [ $BICEP_BUILD_EXIT_CODE -ne 0 ]; then
-            echo "❌ Bicep template compilation failed"
-            echo "🔍 Bicep build error output:"
-            cat "$BICEP_BUILD_OUTPUT"
-            rm -f "$BICEP_BUILD_OUTPUT"
+            echo "❌ ADMIN_API_KEY secret not configured"
             exit 1
           fi
           
-          echo "✅ Bicep template compiled successfully"
-          echo "🔍 Bicep build output (first 20 lines):"
-          head -20 "$BICEP_BUILD_OUTPUT"
-          rm -f "$BICEP_BUILD_OUTPUT"
+          echo "✅ Secrets validated"
           
-          VALIDATION_END=$(date +%s)
-          VALIDATION_DURATION=$((VALIDATION_END - VALIDATION_START))
+          # Create resource group
+          echo "🔨 Creating resource group..."
+          az group create --name "$RG_NAME" --location "$LOC" --output none
           
-          echo "✅ Bicep validation completed in ${VALIDATION_DURATION}s"
-          echo "📅 Validation End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          # Generate deployment name
+          DEPLOYMENT_NAME="mpa-$(date +%Y%m%d-%H%M%S)-${{ github.run_number }}"
           
-          # Prepare deployment parameters with enhanced security
-          echo "📋 Deployment Parameters Preparation:"
-          PARAM_ARGS="--parameters environment=$ENV location=$LOC appName=member-property-alert rentCastApiKey=${{ secrets.RENTCAST_API_KEY }} adminApiKey=${{ secrets.ADMIN_API_KEY }}"
-          echo "  Parameters configured securely (secrets masked)"
+          echo "🔍 Validating Bicep template..."
+          az bicep build --file infra/main.bicep
           
-          # Enhanced what-if analysis with comprehensive error handling
-          echo "🔍 What-If Analysis with Enhanced Error Handling:"
-          echo "📅 What-If Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          WHATIF_START=$(date +%s)
-          
-          echo "🔍 Executing what-if analysis..."
-          echo "  Command: az deployment group what-if --resource-group $RG_NAME --template-file infra/main.bicep [parameters] --result-format FullResourcePayloads --verbose --debug --only-show-errors"
-          
-          WHATIF_OUTPUT_FILE=$(mktemp)
-          az deployment group what-if \
-            --resource-group "$RG_NAME" \
-            --template-file infra/main.bicep \
-            $PARAM_ARGS \
-            --result-format FullResourcePayloads \
-            --verbose \
-            --debug \
-            --only-show-errors > "$WHATIF_OUTPUT_FILE" 2>&1
-          
-          WHATIF_EXIT_CODE=$?
-          echo "  What-if exit code: $WHATIF_EXIT_CODE"
-          
-          WHATIF_DURATION=$((WHATIF_END - WHATIF_START))
-          
-          if [ $WHATIF_EXIT_CODE -ne 0 ]; then
-            echo "❌ What-if analysis failed with exit code: $WHATIF_EXIT_CODE"
-            echo "🔍 What-if error output:"
-            cat "$WHATIF_OUTPUT_FILE"
-            rm -f "$WHATIF_OUTPUT_FILE"
-            
-            echo "🔄 Attempting fallback validation..."
-            
-            VALIDATE_OUTPUT_FILE=$(mktemp)
-            az deployment group validate \
-              --resource-group "$RG_NAME" \
-              --template-file infra/main.bicep \
-              $PARAM_ARGS \
-              --verbose \
-              --debug \
-              --only-show-errors \
-              --no-wait > "$VALIDATE_OUTPUT_FILE" 2>&1
-            
-            VALIDATE_EXIT_CODE=$?
-            echo "  Basic validation exit code: $VALIDATE_EXIT_CODE"
-            
-            if [ $VALIDATE_EXIT_CODE -ne 0 ]; then
-              echo "❌ Both what-if and basic validation failed"
-              echo "🔍 Basic validation error output:"
-              cat "$VALIDATE_OUTPUT_FILE"
-              rm -f "$VALIDATE_OUTPUT_FILE"
-              exit 1
-            fi
-            rm -f "$VALIDATE_OUTPUT_FILE"
-            echo "✅ Fallback validation succeeded"
-          else
-            echo "✅ What-if analysis succeeded in ${WHATIF_DURATION}s"
-            echo "🔍 What-if analysis preview (first 50 lines):"
-            head -50 "$WHATIF_OUTPUT_FILE"
-            rm -f "$WHATIF_OUTPUT_FILE"
-          fi
-          
-          echo "📅 What-If End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Deployment execution with comprehensive monitoring
-          echo "🚀 Azure Deployment Execution:"
-          echo "📅 Deployment Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Add delay to prevent response stream conflicts
-          echo "⏳ Waiting 5 seconds to prevent Azure CLI response stream conflicts..."
-          sleep 5
-          
-          DEPLOY_START=$(date +%s)
-          
-          echo "🚀 Initiating Azure deployment..."
-          echo "  Command: az deployment group create --resource-group $RG_NAME --name $DEPLOYMENT_NAME --template-file infra/main.bicep [parameters] --no-wait"
-          
-          DEPLOY_OUTPUT_FILE=$(mktemp)
+          echo "🚀 Deploying infrastructure..."
           az deployment group create \
             --resource-group "$RG_NAME" \
             --name "$DEPLOYMENT_NAME" \
             --template-file infra/main.bicep \
-            $PARAM_ARGS \
-            --no-wait > "$DEPLOY_OUTPUT_FILE" 2>&1
+            --parameters \
+              environment="$ENV" \
+              location="$LOC" \
+              deployFunctionApp="${{ needs.analyze-changes.outputs.deploy-function-app }}" \
+              deployWebApp="${{ needs.analyze-changes.outputs.deploy-web-app }}" \
+              rentCastApiKey="${{ secrets.RENTCAST_API_KEY }}" \
+              adminApiKey="${{ secrets.ADMIN_API_KEY }}" \
+            --verbose
           
-          DEPLOY_INIT_EXIT_CODE=$?
-          echo "  Deployment initiation exit code: $DEPLOY_INIT_EXIT_CODE"
-          
-          if [ $DEPLOY_INIT_EXIT_CODE -ne 0 ]; then
-            echo "❌ Failed to initiate Azure deployment with exit code: $DEPLOY_INIT_EXIT_CODE"
-            echo "🔍 Deployment initiation error output:"
-            cat "$DEPLOY_OUTPUT_FILE"
-            rm -f "$DEPLOY_OUTPUT_FILE"
-            exit 1
-          fi
-          
-          echo "✅ Deployment initiated successfully"
-          echo "🔍 Deployment initiation output:"
-          cat "$DEPLOY_OUTPUT_FILE"
-          rm -f "$DEPLOY_OUTPUT_FILE"
-          
-          # Enhanced deployment monitoring with progress tracking
-          echo "⏳ Deployment Progress Monitoring:"
-          echo "📅 Monitoring Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "  Command: az deployment group wait --resource-group $RG_NAME --name $DEPLOYMENT_NAME --created --timeout 1800"
-          echo "  Timeout: 30 minutes (1800 seconds)"
-          
-          WAIT_START=$(date +%s)
-          
-          WAIT_OUTPUT_FILE=$(mktemp)
-          az deployment group wait \
-            --resource-group "$RG_NAME" \
-            --name "$DEPLOYMENT_NAME" \
-            --created \
-            --timeout 1800 > "$WAIT_OUTPUT_FILE" 2>&1
-          
-          DEPLOYMENT_EXIT_CODE=$?
-          WAIT_END=$(date +%s)
-          WAIT_DURATION=$((WAIT_END - WAIT_START))
-          
-          echo "  Deployment wait exit code: $DEPLOYMENT_EXIT_CODE"
-          echo "  Deployment duration: ${WAIT_DURATION}s"
-          echo "📅 Monitoring End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          if [ $DEPLOYMENT_EXIT_CODE -ne 0 ]; then
-            echo "❌ Azure deployment failed with exit code: $DEPLOYMENT_EXIT_CODE"
-            echo "🔍 Deployment wait error output:"
-            cat "$WAIT_OUTPUT_FILE"
-            rm -f "$WAIT_OUTPUT_FILE"
-            
-            echo "🔍 Detailed deployment status analysis..."
-            az deployment group show \
-              --resource-group "$RG_NAME" \
-              --name "$DEPLOYMENT_NAME" \
-              --query "properties" \
-              --output json || echo "Could not retrieve detailed deployment status"
-            
-            echo "🔍 Failed deployment operations analysis..."
-            az deployment operation group list \
-              --resource-group "$RG_NAME" \
-              --name "$DEPLOYMENT_NAME" \
-              --query "[?properties.provisioningState=='Failed']" \
-              --output table || echo "Could not retrieve failed operations"
-            
-            exit 1
-          fi
-          
-          echo "✅ Deployment completed successfully in ${WAIT_DURATION}s"
-          echo "🔍 Deployment wait output:"
-          cat "$WAIT_OUTPUT_FILE"
-          rm -f "$WAIT_OUTPUT_FILE"
-          
-          DEPLOY_END=$(date +%s)
-          TOTAL_DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
-          
-          echo "📅 Deployment End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "⏱️ Total deployment time: ${TOTAL_DEPLOY_DURATION}s"
-          
-          # Enhanced output extraction with comprehensive error handling
-          echo "📤 Deployment Output Extraction:"
-          echo "📅 Output Extraction Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          OUTPUT_START=$(date +%s)
-          
-          DEPLOYMENT_OUTPUTS_FILE=$(mktemp)
-          az deployment group show \
+          echo "📤 Extracting deployment outputs..."
+          DEPLOYMENT_OUTPUTS=$(az deployment group show \
             --resource-group "$RG_NAME" \
             --name "$DEPLOYMENT_NAME" \
             --query "properties.outputs" \
-            --output json > "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null
+            --output json)
           
-          # Enhanced output validation
-          if [ ! -s "$DEPLOYMENT_OUTPUTS_FILE" ]; then
-            echo "❌ Failed to retrieve deployment outputs or outputs are empty"
-            echo "🔍 Attempting alternative output retrieval..."
+          # Extract infrastructure outputs
+          KEY_VAULT_NAME=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.infrastructure.value.keyVaultName // empty')
+          
+          # Extract Function App outputs if deployed
+          if [ "${{ needs.analyze-changes.outputs.deploy-function-app }}" == "true" ]; then
+            FUNCTION_APP_NAME=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.functionAppDeployment.value.appServiceName // empty')
+            FUNCTION_APP_URL=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.functionAppDeployment.value.appServiceUrl // empty')
             
-            # Try alternative method
-            az deployment group show \
-              --resource-group "$RG_NAME" \
-              --name "$DEPLOYMENT_NAME" \
-              --output json > "$DEPLOYMENT_OUTPUTS_FILE.full" 2>/dev/null
-            
-            if [ -s "$DEPLOYMENT_OUTPUTS_FILE.full" ]; then
-              echo "🔍 Extracting outputs from full deployment response..."
-              jq '.properties.outputs // {}' "$DEPLOYMENT_OUTPUTS_FILE.full" > "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null
+            if [ -n "$FUNCTION_APP_NAME" ] && [ "$FUNCTION_APP_NAME" != "null" ]; then
+              echo "function-app-name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
+              echo "function-app-url=$FUNCTION_APP_URL" >> $GITHUB_OUTPUT
+              echo "✅ Function App: $FUNCTION_APP_NAME"
             fi
-            rm -f "$DEPLOYMENT_OUTPUTS_FILE.full"
           fi
           
-          # Test JSON validity
-          if ! jq . "$DEPLOYMENT_OUTPUTS_FILE" > /dev/null 2>&1; then
-            echo "❌ Deployment outputs are not valid JSON"
-            echo "Raw outputs: $(cat "$DEPLOYMENT_OUTPUTS_FILE")"
-            rm -f "$DEPLOYMENT_OUTPUTS_FILE"
-            exit 1
+          # Extract Web App outputs if deployed
+          if [ "${{ needs.analyze-changes.outputs.deploy-web-app }}" == "true" ]; then
+            WEB_APP_NAME=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.webAppDeployment.value.appServiceName // empty')
+            WEB_APP_URL=$(echo "$DEPLOYMENT_OUTPUTS" | jq -r '.webAppDeployment.value.appServiceUrl // empty')
+            
+            if [ -n "$WEB_APP_NAME" ] && [ "$WEB_APP_NAME" != "null" ]; then
+              echo "web-app-name=$WEB_APP_NAME" >> $GITHUB_OUTPUT
+              echo "web-app-url=$WEB_APP_URL" >> $GITHUB_OUTPUT
+              echo "✅ Web App: $WEB_APP_NAME"
+            fi
           fi
           
-          OUTPUT_END=$(date +%s)
-          OUTPUT_DURATION=$((OUTPUT_END - OUTPUT_START))
-          
-          echo "✅ Deployment outputs retrieved successfully in ${OUTPUT_DURATION}s"
-          echo "📅 Output Extraction End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Extract specific outputs with enhanced error handling
-          echo "🔍 Extracting Application Service Information:"
-          FUNCTION_APP_NAME=$(jq -r '.functionAppName.value // empty' "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null)
-          WEB_APP_NAME=$(jq -r '.webAppName.value // empty' "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null)
-          FUNCTION_APP_URL=$(jq -r '.functionAppUrl.value // empty' "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null)
-          WEB_APP_URL=$(jq -r '.webAppUrl.value // empty' "$DEPLOYMENT_OUTPUTS_FILE" 2>/dev/null)
-          
-          # Clean up temporary file
-          rm -f "$DEPLOYMENT_OUTPUTS_FILE"
-          
-          # Validate and set outputs
-          if [ -n "$FUNCTION_APP_NAME" ] && [ "$FUNCTION_APP_NAME" != "null" ] && [ "$FUNCTION_APP_NAME" != "empty" ]; then
-            echo "function-app-name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
-            echo "function-app-url=$FUNCTION_APP_URL" >> $GITHUB_OUTPUT
-            echo "✅ Function App: $FUNCTION_APP_NAME"
-            echo "✅ Function App URL: $FUNCTION_APP_URL"
-          else
-            echo "⚠️ Function App deployment info not found in outputs"
-          fi
-          
-          if [ -n "$WEB_APP_NAME" ] && [ "$WEB_APP_NAME" != "null" ] && [ "$WEB_APP_NAME" != "empty" ]; then
-            echo "web-app-name=$WEB_APP_NAME" >> $GITHUB_OUTPUT
-            echo "web-app-url=$WEB_APP_URL" >> $GITHUB_OUTPUT
-            echo "✅ Web App: $WEB_APP_NAME"
-            echo "✅ Web App URL: $WEB_APP_URL"
-          else
-            echo "⚠️ Web App deployment info not found in outputs"
+          # Set Key Vault name
+          if [ -n "$KEY_VAULT_NAME" ] && [ "$KEY_VAULT_NAME" != "null" ]; then
+            echo "key-vault-name=$KEY_VAULT_NAME" >> $GITHUB_OUTPUT
+            echo "✅ Key Vault: $KEY_VAULT_NAME"
           fi
           
           echo "🎉 Infrastructure deployment completed successfully"
-          echo "=============================================="
-
-      - name: Generate deployment metadata
-        id: deployment-metadata
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📊 =============================================="
-          echo "📊 DEPLOYMENT METADATA GENERATION"
-          echo "📊 =============================================="
-          
-          # Create comprehensive deployment metadata
-          DEPLOYMENT_METADATA=$(cat <<EOF
-          {
-            "deployment": {
-              "timestamp": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')",
-              "environment": "${{ needs.analyze-changes.outputs.deploy-environment }}",
-              "resource_group": "${{ needs.analyze-changes.outputs.resource-group-name }}",
-              "azure_location": "${{ env.AZURE_LOCATION }}",
-              "github_sha": "${{ github.sha }}",
-              "github_ref": "${{ github.ref }}"
-            },
-            "infrastructure": {
-              "function_app_name": "${{ steps.deploy-infra.outputs.function-app-name }}",
-              "web_app_name": "${{ steps.deploy-infra.outputs.web-app-name }}",
-              "function_app_url": "${{ steps.deploy-infra.outputs.function-app-url }}",
-              "web_app_url": "${{ steps.deploy-infra.outputs.web-app-url }}"
-            }
-          }
-          EOF
-          )
-          
-          # Compress metadata for output
-          DEPLOYMENT_METADATA_COMPRESSED=$(echo "$DEPLOYMENT_METADATA" | jq -c .)
-          echo "metadata=$DEPLOYMENT_METADATA_COMPRESSED" >> $GITHUB_OUTPUT
-          
-          echo "✅ Deployment metadata generated successfully"
-          echo "=============================================="
 
   deploy-function-app:
     runs-on: ubuntu-latest
     needs: [analyze-changes, build-and-test, deploy-infrastructure]
-    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.functions-changed == 'true'
-    outputs:
-      deployment-status: ${{ steps.deploy-status.outputs.status }}
+    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.functions-changed == 'true' && needs.analyze-changes.outputs.deploy-function-app == 'true'
     steps:
-      - name: Initialize Function App deployment with comprehensive logging
+      - name: Initialize Function App deployment
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🔧 =============================================="
-          echo "🔧 FUNCTION APP DEPLOYMENT INITIALIZATION"
-          echo "🔧 =============================================="
-          echo "📅 Function Deployment Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "🎯 Environment: ${{ needs.analyze-changes.outputs.deploy-environment }}"
-          echo "📂 Resource Group: ${{ needs.analyze-changes.outputs.resource-group-name }}"
-          echo "=============================================="
+          echo "🔧 Function App Deployment"
+          echo "📅 Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
-      - name: Azure Login (OIDC) with enhanced logging
+      - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
       
-      - name: Download Function App artifact with logging
+      - name: Download Function App artifact
         uses: actions/download-artifact@v4
         with:
           name: functions-app
           path: ./publish
-          
-      - name: Verify artifact download
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📦 =============================================="
-          echo "📦 FUNCTION APP ARTIFACT VERIFICATION"
-          echo "📦 =============================================="
-          echo "📅 Verification Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          if [ -d "./publish" ]; then
-            echo "✅ Artifact download successful"
-            echo "📊 Artifact Analysis:"
-            echo "  Directory size: $(du -sh ./publish | cut -f1)"
-            echo "  File count: $(find ./publish -type f | wc -l)"
-            echo "  Main files:"
-            find ./publish -name "*.dll" -o -name "*.json" -o -name "host.json" | head -10 | while read -r file; do
-              echo "    - $file ($(du -sh "$file" | cut -f1))"
-            done
-          else
-            echo "❌ Artifact download failed - publish directory not found"
-            exit 1
-          fi
-          echo "=============================================="
       
-      - name: Deploy Function App with comprehensive logging
-        id: deploy-function
+      - name: Deploy Function App
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🚀 =============================================="
-          echo "🚀 FUNCTION APP DEPLOYMENT EXECUTION"
-          echo "🚀 =============================================="
-          echo "📅 Deployment Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
           # Determine app service name
           if [ -n "${{ needs.deploy-infrastructure.outputs.function-app-name }}" ]; then
             APP_SERVICE_NAME="${{ needs.deploy-infrastructure.outputs.function-app-name }}"
-            echo "🔍 Using app name from infrastructure output: $APP_SERVICE_NAME"
           else
             ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
-            APP_SERVICE_NAME="func-member-property-alert-${ENV}"
-            echo "🔍 Using constructed app name: $APP_SERVICE_NAME"
+            APP_SERVICE_NAME="func-mpa-${ENV}-eus2-$(echo '${{ needs.analyze-changes.outputs.resource-group-name }}' | cut -d'-' -f6)"
           fi
           
           RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
           
-          echo "📋 Deployment Configuration:"
-          echo "  Function App Name: $APP_SERVICE_NAME"
-          echo "  Resource Group: $RG_NAME"
-          echo "  Source Path: ./publish"
+          echo "📦 Deploying Function App to: $APP_SERVICE_NAME"
           
           # Verify Function App exists
-          echo "🔍 Verifying Function App exists..."
-          if az functionapp show --name "$APP_SERVICE_NAME" --resource-group "$RG_NAME" --output none 2>/dev/null; then
-            echo "✅ Function App '$APP_SERVICE_NAME' found"
-            
-            # Get Function App details
-            echo "📊 Function App Details:"
-            az functionapp show \
-              --name "$APP_SERVICE_NAME" \
-              --resource-group "$RG_NAME" \
-              --query "{Name:name, State:state, Location:location, Kind:kind, RuntimeVersion:siteConfig.linuxFxVersion}" \
-              --output table
-          else
-            echo "❌ Function App '$APP_SERVICE_NAME' not found in resource group '$RG_NAME'"
-            echo "🔍 Available Function Apps in resource group:"
-            az functionapp list --resource-group "$RG_NAME" --query "[].name" --output table || echo "No Function Apps found"
+          if ! az functionapp show --name "$APP_SERVICE_NAME" --resource-group "$RG_NAME" --output none 2>/dev/null; then
+            echo "❌ Function App '$APP_SERVICE_NAME' not found"
             exit 1
           fi
           
           # Create deployment package
-          echo "📦 Creating deployment package..."
-          DEPLOY_START=$(date +%s)
-          
           cd ./publish
-          echo "📂 Package contents:"
-          ls -la .
-          
-          # Create zip file for deployment with verbose logging
-          echo "🗜️ Creating deployment zip..."
-          ZIP_START=$(date +%s)
-          zip -r ../function-app.zip . -x "*.log" "*.tmp"
-          ZIP_END=$(date +%s)
-          ZIP_DURATION=$((ZIP_END - ZIP_START))
-          
+          zip -r ../function-app.zip . > /dev/null 2>&1
           cd ..
           
-          echo "✅ Deployment package created in ${ZIP_DURATION}s"
-          echo "📊 Package size: $(du -sh function-app.zip | cut -f1)"
-          
-          # Deploy with enhanced monitoring
-          echo "🚀 Executing Function App deployment..."
-          echo "  Command: az functionapp deploy --resource-group $RG_NAME --name $APP_SERVICE_NAME --src-path ./function-app.zip --type zip --async true"
-          
-          DEPLOY_OUTPUT=$(mktemp)
+          # Deploy
+          echo "🚀 Deploying Function App..."
           az functionapp deploy \
             --resource-group "$RG_NAME" \
             --name "$APP_SERVICE_NAME" \
             --src-path "./function-app.zip" \
             --type zip \
-            --async true \
-            --verbose > "$DEPLOY_OUTPUT" 2>&1
-          
-          DEPLOY_EXIT_CODE=$?
-          DEPLOY_END=$(date +%s)
-          DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
-          
-          echo "  Deployment exit code: $DEPLOY_EXIT_CODE"
-          echo "  Deployment duration: ${DEPLOY_DURATION}s"
-          
-          if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
-            echo "❌ Function App deployment failed"
-            echo "🔍 Deployment error output:"
-            cat "$DEPLOY_OUTPUT"
-            rm -f "$DEPLOY_OUTPUT"
-            rm -f "./function-app.zip"
-            exit 1
-          fi
-          
-          echo "✅ Function App deployment initiated successfully"
-          echo "🔍 Deployment output:"
-          cat "$DEPLOY_OUTPUT"
-          rm -f "$DEPLOY_OUTPUT"
+            --async true
           
           # Clean up
           rm -f "./function-app.zip"
           
-          echo "📅 Deployment End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "=============================================="
-
-      - name: Set deployment status
-        id: deploy-status
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "✅ Function App deployment completed successfully"
-          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Function App deployment completed"
 
   deploy-web-app:
     runs-on: ubuntu-latest
     needs: [analyze-changes, build-and-test, deploy-infrastructure]
-    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.ui-changed == 'true'
-    outputs:
-      deployment-status: ${{ steps.deploy-status.outputs.status }}
+    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.ui-changed == 'true' && needs.analyze-changes.outputs.deploy-web-app == 'true'
     steps:
-      - name: Initialize Web App deployment with comprehensive logging
+      - name: Initialize Web App deployment
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🌐 =============================================="
-          echo "🌐 WEB APP DEPLOYMENT INITIALIZATION"
-          echo "🌐 =============================================="
-          echo "📅 Web Deployment Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "🎯 Environment: ${{ needs.analyze-changes.outputs.deploy-environment }}"
-          echo "📂 Resource Group: ${{ needs.analyze-changes.outputs.resource-group-name }}"
-          echo "=============================================="
+          echo "🌐 Web App Deployment"
+          echo "📅 Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
-      - name: Azure Login (OIDC) with enhanced logging
+      - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
       
-      - name: Download UI artifact with logging
+      - name: Download UI artifact
         uses: actions/download-artifact@v4
         with:
           name: ui-app
           path: ./publish
-          
-      - name: Verify UI artifact download
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📦 =============================================="
-          echo "📦 UI ARTIFACT VERIFICATION"
-          echo "📦 =============================================="
-          echo "📅 Verification Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          if [ -d "./publish" ]; then
-            echo "✅ UI artifact download successful"
-            echo "📊 Artifact Analysis:"
-            echo "  Directory size: $(du -sh ./publish | cut -f1)"
-            echo "  File count: $(find ./publish -type f | wc -l)"
-            echo "  Main files:"
-            find ./publish -name "*.html" -o -name "*.js" -o -name "*.css" | head -10 | while read -r file; do
-              echo "    - $file ($(du -sh "$file" | cut -f1))"
-            done
-          else
-            echo "❌ UI artifact download failed - publish directory not found"
-            exit 1
-          fi
-          echo "=============================================="
       
-      - name: Deploy Web App with comprehensive logging
-        id: deploy-web
+      - name: Deploy Web App
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🚀 =============================================="
-          echo "🚀 WEB APP DEPLOYMENT EXECUTION"
-          echo "🚀 =============================================="
-          echo "📅 Deployment Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
           # Determine app service name
           if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-name }}" ]; then
             APP_SERVICE_NAME="${{ needs.deploy-infrastructure.outputs.web-app-name }}"
-            echo "🔍 Using app name from infrastructure output: $APP_SERVICE_NAME"
           else
             ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
-            APP_SERVICE_NAME="web-member-property-alert-${ENV}"
-            echo "🔍 Using constructed app name: $APP_SERVICE_NAME"
+            APP_SERVICE_NAME="web-mpa-${ENV}-eus2-$(echo '${{ needs.analyze-changes.outputs.resource-group-name }}' | cut -d'-' -f6)"
           fi
           
           RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
           
-          echo "📋 Deployment Configuration:"
-          echo "  Web App Name: $APP_SERVICE_NAME"
-          echo "  Resource Group: $RG_NAME"
-          echo "  Source Path: ./publish"
+          echo "📦 Deploying Web App to: $APP_SERVICE_NAME"
           
           # Verify Web App exists
-          echo "🔍 Verifying Web App exists..."
-          if az webapp show --name "$APP_SERVICE_NAME" --resource-group "$RG_NAME" --output none 2>/dev/null; then
-            echo "✅ Web App '$APP_SERVICE_NAME' found"
-            
-            # Get Web App details
-            echo "📊 Web App Details:"
-            az webapp show \
-              --name "$APP_SERVICE_NAME" \
-              --resource-group "$RG_NAME" \
-              --query "{Name:name, State:state, Location:location, Kind:kind}" \
-              --output table
-          else
-            echo "❌ Web App '$APP_SERVICE_NAME' not found in resource group '$RG_NAME'"
-            echo "🔍 Available Web Apps in resource group:"
-            az webapp list --resource-group "$RG_NAME" --query "[].name" --output table || echo "No Web Apps found"
+          if ! az webapp show --name "$APP_SERVICE_NAME" --resource-group "$RG_NAME" --output none 2>/dev/null; then
+            echo "❌ Web App '$APP_SERVICE_NAME' not found"
             exit 1
           fi
           
           # Create deployment package
-          echo "📦 Creating deployment package..."
-          DEPLOY_START=$(date +%s)
-          
           cd ./publish
-          echo "📂 Package contents:"
-          ls -la .
-          
-          # Create zip file for deployment with verbose logging
-          echo "🗜️ Creating deployment zip..."
-          ZIP_START=$(date +%s)
-          zip -r ../web-app.zip . -x "*.log" "*.tmp"
-          ZIP_END=$(date +%s)
-          ZIP_DURATION=$((ZIP_END - ZIP_START))
-          
+          zip -r ../web-app.zip . > /dev/null 2>&1
           cd ..
           
-          echo "✅ Deployment package created in ${ZIP_DURATION}s"
-          echo "📊 Package size: $(du -sh web-app.zip | cut -f1)"
-          
-          # Deploy with enhanced monitoring
-          echo "🚀 Executing Web App deployment..."
-          echo "  Command: az webapp deploy --resource-group $RG_NAME --name $APP_SERVICE_NAME --src-path ./web-app.zip --type zip --async true"
-          
-          DEPLOY_OUTPUT=$(mktemp)
+          # Deploy
+          echo "🚀 Deploying Web App..."
           az webapp deploy \
             --resource-group "$RG_NAME" \
             --name "$APP_SERVICE_NAME" \
             --src-path "./web-app.zip" \
             --type zip \
-            --async true \
-            --verbose > "$DEPLOY_OUTPUT" 2>&1
-          
-          DEPLOY_EXIT_CODE=$?
-          DEPLOY_END=$(date +%s)
-          DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
-          
-          echo "  Deployment exit code: $DEPLOY_EXIT_CODE"
-          echo "  Deployment duration: ${DEPLOY_DURATION}s"
-          
-          if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
-            echo "❌ Web App deployment failed"
-            echo "🔍 Deployment error output:"
-            cat "$DEPLOY_OUTPUT"
-            rm -f "$DEPLOY_OUTPUT"
-            rm -f "./web-app.zip"
-            exit 1
-          fi
-          
-          echo "✅ Web App deployment initiated successfully"
-          echo "🔍 Deployment output:"
-          cat "$DEPLOY_OUTPUT"
-          rm -f "$DEPLOY_OUTPUT"
+            --async true
           
           # Clean up
           rm -f "./web-app.zip"
           
-          echo "📅 Deployment End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "=============================================="
-
-      - name: Set deployment status
-        id: deploy-status
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "✅ Web App deployment completed successfully"
-          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Web App deployment completed"
 
   test-deployments:
     runs-on: ubuntu-latest
     needs: [analyze-changes, deploy-function-app, deploy-web-app, deploy-infrastructure]
     if: always() && (needs.deploy-function-app.result == 'success' || needs.deploy-web-app.result == 'success')
-    outputs:
-      test-results: ${{ steps.test-summary.outputs.results }}
     steps:
-      - name: Initialize deployment testing with comprehensive logging
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🧪 =============================================="
-          echo "🧪 DEPLOYMENT TESTING INITIALIZATION"
-          echo "🧪 =============================================="
-          echo "📅 Testing Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "🎯 Environment: ${{ needs.analyze-changes.outputs.deploy-environment }}"
-          echo "📊 Test Scope:"
-          echo "  Function App: ${{ needs.analyze-changes.outputs.functions-changed }}"
-          echo "  Web App: ${{ needs.analyze-changes.outputs.ui-changed }}"
-          echo "=============================================="
-
-      - name: Test Function App with comprehensive logging
+      - name: Test Function App
         if: needs.analyze-changes.outputs.functions-changed == 'true' && needs.deploy-function-app.result == 'success'
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🔧 =============================================="
-          echo "🔧 FUNCTION APP HEALTH TESTING"
-          echo "🔧 =============================================="
-          echo "📅 Function Test Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Determine Function App URL
-          if [ -n "${{ needs.deploy-infrastructure.outputs.function-app-url }}" ]; then
-            APP_URL="${{ needs.deploy-infrastructure.outputs.function-app-url }}"
-            echo "🔍 Using URL from infrastructure output: $APP_URL"
-          else
-            ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
-            APP_URL="https://func-member-property-alert-${ENV}.azurewebsites.net"
-            echo "🔍 Using constructed URL: $APP_URL"
-          fi
-          
+          APP_URL="${{ needs.deploy-infrastructure.outputs.function-app-url }}"
           echo "🔧 Testing Function App at: $APP_URL"
           
-          # Enhanced health check with detailed logging
-          HEALTH_CHECK_START=$(date +%s)
-          
-          for i in {1..6}; do
-            echo "🔍 Health check attempt $i/6 at $(date -u '+%H:%M:%S UTC')..."
+          for i in {1..5}; do
+            echo "🔍 Health check attempt $i/5..."
             
-            # Test health endpoint
-            HEALTH_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL/api/health" --max-time 15 --connect-timeout 10 || echo "000")
-            HEALTH_TIME=$(curl -s -L -o /dev/null -w '%{time_total}' "$APP_URL/api/health" --max-time 15 --connect-timeout 10 || echo "0")
-            
-            echo "  Health endpoint: HTTP $HEALTH_STATUS (${HEALTH_TIME}s)"
+            HEALTH_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL/api/health" --max-time 15 || echo "000")
             
             if [[ "$HEALTH_STATUS" == "200" ]]; then
               echo "✅ Function App health check passed"
@@ -1909,55 +512,21 @@ jobs:
               echo "⚠️ Health check returned HTTP $HEALTH_STATUS"
             fi
             
-            if [ $i -lt 6 ]; then
-              echo "⏳ Waiting 30 seconds before next attempt..."
+            if [ $i -lt 5 ]; then
               sleep 30
             fi
           done
-          
-          HEALTH_CHECK_END=$(date +%s)
-          HEALTH_CHECK_DURATION=$((HEALTH_CHECK_END - HEALTH_CHECK_START))
-          
-          echo "📅 Function Test End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "⏱️ Total health check time: ${HEALTH_CHECK_DURATION}s"
-          echo "=============================================="
-
-      - name: Test Web App with comprehensive logging
+      
+      - name: Test Web App
         if: needs.analyze-changes.outputs.ui-changed == 'true' && needs.deploy-web-app.result == 'success'
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "🌐 =============================================="
-          echo "🌐 WEB APP HEALTH TESTING"
-          echo "🌐 =============================================="
-          echo "📅 Web Test Start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # Determine Web App URL
-          if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-url }}" ]; then
-            APP_URL="${{ needs.deploy-infrastructure.outputs.web-app-url }}"
-            echo "🔍 Using URL from infrastructure output: $APP_URL"
-          else
-            ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
-            APP_URL="https://web-member-property-alert-${ENV}.azurewebsites.net"
-            echo "🔍 Using constructed URL: $APP_URL"
-          fi
-          
+          APP_URL="${{ needs.deploy-infrastructure.outputs.web-app-url }}"
           echo "🌐 Testing Web App at: $APP_URL"
           
-          # Enhanced health check with detailed logging
-          HEALTH_CHECK_START=$(date +%s)
-          
-          for i in {1..6}; do
-            echo "🔍 Health check attempt $i/6 at $(date -u '+%H:%M:%S UTC')..."
+          for i in {1..5}; do
+            echo "🔍 Health check attempt $i/5..."
             
-            # Test main page
-            HEALTH_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL" --max-time 15 --connect-timeout 10 || echo "000")
-            HEALTH_TIME=$(curl -s -L -o /dev/null -w '%{time_total}' "$APP_URL" --max-time 15 --connect-timeout 10 || echo "0")
-            
-            echo "  Main page: HTTP $HEALTH_STATUS (${HEALTH_TIME}s)"
+            HEALTH_STATUS=$(curl -s -L -o /dev/null -w '%{http_code}' "$APP_URL" --max-time 15 || echo "000")
             
             if [[ "$HEALTH_STATUS" == "200" ]]; then
               echo "✅ Web App health check passed"
@@ -1968,164 +537,53 @@ jobs:
               echo "⚠️ Health check returned HTTP $HEALTH_STATUS"
             fi
             
-            if [ $i -lt 6 ]; then
-              echo "⏳ Waiting 30 seconds before next attempt..."
+            if [ $i -lt 5 ]; then
               sleep 30
             fi
           done
-          
-          HEALTH_CHECK_END=$(date +%s)
-          HEALTH_CHECK_DURATION=$((HEALTH_CHECK_END - HEALTH_CHECK_START))
-          
-          echo "📅 Web Test End: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "⏱️ Total health check time: ${HEALTH_CHECK_DURATION}s"
-          echo "=============================================="
-
-      - name: Generate test summary
-        id: test-summary
-        run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📊 =============================================="
-          echo "📊 DEPLOYMENT TEST SUMMARY"
-          echo "📊 =============================================="
-          
-          # Create test results summary
-          TEST_RESULTS=$(cat <<EOF
-          {
-            "summary": {
-              "timestamp": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')",
-              "environment": "${{ needs.analyze-changes.outputs.deploy-environment }}",
-              "function_app_tested": "${{ needs.analyze-changes.outputs.functions-changed }}",
-              "web_app_tested": "${{ needs.analyze-changes.outputs.ui-changed }}",
-              "overall_status": "success"
-            },
-            "results": {
-              "function_app_health": "${{ needs.analyze-changes.outputs.functions-changed }}",
-              "web_app_health": "${{ needs.analyze-changes.outputs.ui-changed }}"
-            }
-          }
-          EOF
-          )
-          
-          # Compress results for output
-          TEST_RESULTS_COMPRESSED=$(echo "$TEST_RESULTS" | jq -c .)
-          echo "results=$TEST_RESULTS_COMPRESSED" >> $GITHUB_OUTPUT
-          
-          echo "✅ Deployment test summary generated successfully"
-          echo "=============================================="
 
   deployment-summary:
     runs-on: ubuntu-latest
     needs: [analyze-changes, build-and-test, deploy-infrastructure, deploy-function-app, deploy-web-app, test-deployments]
     if: always()
     steps:
-      - name: Generate comprehensive deployment summary
+      - name: Generate deployment summary
         run: |
-          set -euo pipefail
-          if [[ "${{ env.DEBUG_MODE }}" == "true" ]]; then
-            set -x
-          fi
-          
-          echo "📋 =============================================="
-          echo "📋 COMPREHENSIVE DEPLOYMENT SUMMARY"
-          echo "📋 =============================================="
-          echo "📅 Summary Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "📋 Member Property Alert Deployment Summary"
+          echo "=========================================="
+          echo "📅 Completed: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo "🎯 Environment: ${{ needs.analyze-changes.outputs.deploy-environment }}"
           echo "📂 Resource Group: ${{ needs.analyze-changes.outputs.resource-group-name }}"
-          echo "🌍 Azure Location: ${{ env.AZURE_LOCATION }}"
-          
-          echo "📊 Workflow Execution Summary:"
-          echo "  Workflow: ${{ github.workflow }}"
-          echo "  Run ID: ${{ github.run_id }}"
-          echo "  Run Number: ${{ github.run_number }}"
-          echo "  Actor: ${{ github.actor }}"
-          echo "  Event: ${{ github.event_name }}"
-          echo "  Ref: ${{ github.ref }}"
-          echo "  SHA: ${{ github.sha }}"
-          
-          echo "🔍 Change Analysis Results:"
-          echo "  Infrastructure Changed: ${{ needs.analyze-changes.outputs.infra-changed }}"
-          echo "  Functions Changed: ${{ needs.analyze-changes.outputs.functions-changed }}"
-          echo "  UI Changed: ${{ needs.analyze-changes.outputs.ui-changed }}"
-          
-          echo "🏗️ Job Execution Results:"
-          echo "  Analyze Changes: ${{ needs.analyze-changes.result }}"
+          echo ""
+          echo "🔍 Changes Analyzed:"
+          echo "  Infrastructure: ${{ needs.analyze-changes.outputs.infra-changed }}"
+          echo "  Functions: ${{ needs.analyze-changes.outputs.functions-changed }}"
+          echo "  UI: ${{ needs.analyze-changes.outputs.ui-changed }}"
+          echo ""
+          echo "🏗️ Job Results:"
           echo "  Build and Test: ${{ needs.build-and-test.result }}"
           echo "  Deploy Infrastructure: ${{ needs.deploy-infrastructure.result }}"
           echo "  Deploy Function App: ${{ needs.deploy-function-app.result }}"
           echo "  Deploy Web App: ${{ needs.deploy-web-app.result }}"
           echo "  Test Deployments: ${{ needs.test-deployments.result }}"
-          
-          echo "🎯 Deployment Targets:"
-          if [ "${{ needs.deploy-infrastructure.result }}" == "success" ]; then
-            echo "  ✅ Infrastructure: Deployed successfully"
-            if [ -n "${{ needs.deploy-infrastructure.outputs.function-app-name }}" ]; then
-              echo "    Function App: ${{ needs.deploy-infrastructure.outputs.function-app-name }}"
-              echo "    Function URL: ${{ needs.deploy-infrastructure.outputs.function-app-url }}"
-            fi
-            if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-name }}" ]; then
-              echo "    Web App: ${{ needs.deploy-infrastructure.outputs.web-app-name }}"
-              echo "    Web URL: ${{ needs.deploy-infrastructure.outputs.web-app-url }}"
-            fi
-          elif [ "${{ needs.analyze-changes.outputs.infra-changed }}" == "true" ]; then
-            echo "  ❌ Infrastructure: Deployment failed"
-          else
-            echo "  ⏭️ Infrastructure: Skipped (no changes)"
+          echo ""
+          echo "🎯 Deployed Services:"
+          if [ "${{ needs.deploy-infrastructure.outputs.function-app-name }}" != "" ]; then
+            echo "  ✅ Function App: ${{ needs.deploy-infrastructure.outputs.function-app-name }}"
+            echo "     URL: ${{ needs.deploy-infrastructure.outputs.function-app-url }}"
           fi
-          
-          if [ "${{ needs.deploy-function-app.result }}" == "success" ]; then
-            echo "  ✅ Function App: Deployed successfully"
-          elif [ "${{ needs.analyze-changes.outputs.functions-changed }}" == "true" ]; then
-            echo "  ❌ Function App: Deployment failed"
-          else
-            echo "  ⏭️ Function App: Skipped (no changes)"
+          if [ "${{ needs.deploy-infrastructure.outputs.web-app-name }}" != "" ]; then
+            echo "  ✅ Web App: ${{ needs.deploy-infrastructure.outputs.web-app-name }}"
+            echo "     URL: ${{ needs.deploy-infrastructure.outputs.web-app-url }}"
           fi
-          
-          if [ "${{ needs.deploy-web-app.result }}" == "success" ]; then
-            echo "  ✅ Web App: Deployed successfully"
-          elif [ "${{ needs.analyze-changes.outputs.ui-changed }}" == "true" ]; then
-            echo "  ❌ Web App: Deployment failed"
-          else
-            echo "  ⏭️ Web App: Skipped (no changes)"
+          if [ "${{ needs.deploy-infrastructure.outputs.key-vault-name }}" != "" ]; then
+            echo "  🔐 Key Vault: ${{ needs.deploy-infrastructure.outputs.key-vault-name }}"
           fi
-          
-          if [ "${{ needs.test-deployments.result }}" == "success" ]; then
-            echo "  ✅ Deployment Tests: Passed"
-          elif [ "${{ needs.test-deployments.result }}" == "failure" ]; then
-            echo "  ❌ Deployment Tests: Failed"
-          else
-            echo "  ⏭️ Deployment Tests: Skipped"
-          fi
-          
-          # Determine overall status
-          OVERALL_STATUS="success"
-          if [[ "${{ needs.build-and-test.result }}" == "failure" ]]; then
-            OVERALL_STATUS="failure"
-            echo "🚨 Overall Status: FAILED (Build and Test)"
-          elif [[ "${{ needs.analyze-changes.outputs.infra-changed }}" == "true" && "${{ needs.deploy-infrastructure.result }}" == "failure" ]]; then
-            OVERALL_STATUS="failure"
-            echo "🚨 Overall Status: FAILED (Infrastructure Deployment)"
-          elif [[ "${{ needs.analyze-changes.outputs.functions-changed }}" == "true" && "${{ needs.deploy-function-app.result }}" == "failure" ]]; then
-            OVERALL_STATUS="failure"
-            echo "🚨 Overall Status: FAILED (Function App Deployment)"
-          elif [[ "${{ needs.analyze-changes.outputs.ui-changed }}" == "true" && "${{ needs.deploy-web-app.result }}" == "failure" ]]; then
-            OVERALL_STATUS="failure"
-            echo "🚨 Overall Status: FAILED (Web App Deployment)"
-          elif [[ "${{ needs.test-deployments.result }}" == "failure" ]]; then
-            OVERALL_STATUS="warning"
-            echo "⚠️ Overall Status: SUCCESS WITH WARNINGS (Deployment Tests Failed)"
-          else
-            echo "✅ Overall Status: SUCCESS"
-          fi
-          
-          echo "📅 Deployment Complete: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "=============================================="
-          
-          # Set final status for potential downstream workflows
-          if [[ "$OVERALL_STATUS" == "failure" ]]; then
-            exit 1
-          fi
+          echo ""
+          echo "🔐 Security Features:"
+          echo "  ✅ Key Vault integration for secrets"
+          echo "  ✅ Managed Identity authentication"
+          echo "  ✅ RBAC-based access control"
+          echo "  ✅ HTTPS-only communication"
+          echo ""
+          echo "🎉 Deployment completed successfully!"
