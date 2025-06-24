@@ -238,7 +238,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enabledForDeployment: false
     enableSoftDelete: true
     softDeleteRetentionInDays: environment == 'prod' ? 90 : 7
-    enablePurgeProtection: environment == 'prod'
+    enablePurgeProtection: true
     publicNetworkAccess: 'Enabled'
     networkAcls: {
       bypass: 'AzureServices'
