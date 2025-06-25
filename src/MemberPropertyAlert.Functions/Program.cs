@@ -15,6 +15,10 @@ using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Abstractions;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Configurations;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
 using Microsoft.OpenApi.Models;
+using MemberPropertyAlert.Core.Application.Commands;
+using MemberPropertyAlert.Core.Application.Queries;
+using MemberPropertyAlert.Core.Models;
+using MemberPropertyAlert.Core.Validation;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -125,6 +129,19 @@ var host = new HostBuilder()
         services.AddScoped<ISignalRService, SignalRService>();
         services.AddScoped<ISchedulingService, SchedulingService>();
         services.AddScoped<IPropertyScanService, PropertyScanService>();
+
+        // CQRS Command Handlers
+        services.AddScoped<ICommandHandler<CreateInstitutionCommand, Institution>, CreateInstitutionCommandHandler>();
+        services.AddScoped<ICommandHandler<UpdateInstitutionCommand, Institution>, UpdateInstitutionCommandHandler>();
+        services.AddScoped<ICommandHandler<DeleteInstitutionCommand>, DeleteInstitutionCommandHandler>();
+
+        // CQRS Query Handlers
+        services.AddScoped<IQueryHandler<GetAllInstitutionsQuery, IEnumerable<Institution>>, GetAllInstitutionsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetInstitutionByIdQuery, Institution>, GetInstitutionByIdQueryHandler>();
+
+        // Validators
+        services.AddScoped<IValidator<CreateInstitutionCommand>, CreateInstitutionCommandValidator>();
+        services.AddScoped<IValidator<UpdateInstitutionCommand>, UpdateInstitutionCommandValidator>();
 
         // Background Services
         services.AddHostedService<ScheduledScanService>();
