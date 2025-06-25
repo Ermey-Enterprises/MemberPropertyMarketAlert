@@ -206,18 +206,40 @@ jobs:
         run: |
           echo "🎨 Building React UI..."
           
+          # Debug information
+          echo "🔍 Environment debugging:"
+          echo "  Node version: $(node --version)"
+          echo "  NPM version: $(npm --version)"
+          echo "  Working directory: $(pwd)"
+          echo "  Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
+          echo "  Package-lock.json exists: $(test -f package-lock.json && echo 'YES' || echo 'NO')"
+          
+          # Show package.json content for debugging
+          echo "📄 Package.json content:"
+          cat package.json
+          
           echo "📦 Installing dependencies..."
           if [ -f "package-lock.json" ]; then
-            npm ci --silent
+            echo "🔧 Using npm ci (clean install)..."
+            npm ci --verbose
           else
-            npm install --silent
+            echo "🔧 Using npm install..."
+            npm install --verbose
           fi
           
+          echo "✅ Dependencies installed successfully"
+          echo "📋 Installed packages:"
+          npm list --depth=0
+          
           echo "🧪 Running React tests..."
-          npm test -- --ci --coverage --silent --maxWorkers=2 --passWithNoTests --watchAll=false
+          npm test -- --ci --coverage --maxWorkers=2 --passWithNoTests --watchAll=false --verbose
           
           echo "📦 Building production bundle..."
-          npm run build
+          npm run build --verbose
+          
+          echo "✅ React build completed successfully"
+          echo "📁 Build output:"
+          ls -la build/ || echo "Build directory not found"
       
       - name: Publish Function App
         if: needs.analyze-changes.outputs.functions-changed == 'true'
