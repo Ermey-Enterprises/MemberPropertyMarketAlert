@@ -94,7 +94,7 @@ namespace MemberPropertyAlert.Functions.Api
                 var institutionRequest = JsonSerializer.Deserialize<CreateInstitutionRequest>(requestBody, new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                })!;
+                });
 
                 if (institutionRequest == null)
                 {
@@ -191,7 +191,7 @@ namespace MemberPropertyAlert.Functions.Api
                 var updateRequest = JsonSerializer.Deserialize<UpdateInstitutionRequest>(requestBody, new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                })!;
+                });
 
                 if (updateRequest == null)
                 {

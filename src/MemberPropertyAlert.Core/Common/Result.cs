@@ -33,6 +33,8 @@ namespace MemberPropertyAlert.Core.Common
 
         protected internal Result(T value, bool isSuccess, string error) : base(isSuccess, error)
         {
+            if (isSuccess && value == null)
+                throw new ArgumentNullException(nameof(value), "Value cannot be null for successful result");
             _value = value!;
         }
 
