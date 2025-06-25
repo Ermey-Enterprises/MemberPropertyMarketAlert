@@ -158,13 +158,14 @@ namespace MemberPropertyAlert.Functions.Services
 
                 var institutions = await _cosmosService.GetAllInstitutionsAsync();
                 
+                IEnumerable<Institution> result = institutions;
                 if (query.ActiveOnly)
                 {
-                    institutions = institutions.Where(i => i.IsActive).ToList();
+                    result = institutions.Where(i => i.IsActive);
                 }
 
-                _logger.LogInformation("Retrieved {Count} institutions", institutions.Count());
-                return Result<IEnumerable<Institution>>.Success(institutions);
+                _logger.LogInformation("Retrieved {Count} institutions", result.Count());
+                return Result<IEnumerable<Institution>>.Success(result);
             }
             catch (Exception ex)
             {
