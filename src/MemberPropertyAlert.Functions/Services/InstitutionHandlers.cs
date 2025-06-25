@@ -32,7 +32,7 @@ namespace MemberPropertyAlert.Functions.Services
                 {
                     Id = Guid.NewGuid().ToString(),
                     Name = command.Name,
-                    ContactEmail = command.ContactEmail,
+                    ContactEmail = command.ContactEmail ?? string.Empty,
                     WebhookUrl = command.WebhookUrl,
                     NotificationSettings = command.NotificationSettings,
                     IsActive = command.IsActive,
@@ -79,7 +79,7 @@ namespace MemberPropertyAlert.Functions.Services
                 }
 
                 existingInstitution.Name = command.Name;
-                existingInstitution.ContactEmail = command.ContactEmail;
+                existingInstitution.ContactEmail = command.ContactEmail ?? string.Empty;
                 existingInstitution.WebhookUrl = command.WebhookUrl;
                 existingInstitution.NotificationSettings = command.NotificationSettings;
                 existingInstitution.IsActive = command.IsActive;
