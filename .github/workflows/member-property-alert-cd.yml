@@ -552,9 +552,27 @@ jobs:
           # Determine app service name
           if [ -n "${{ needs.deploy-infrastructure.outputs.web-app-name }}" ]; then
             APP_SERVICE_NAME="${{ needs.deploy-infrastructure.outputs.web-app-name }}"
+            echo "✅ Using web app name from infrastructure output: $APP_SERVICE_NAME"
           else
             ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
-            APP_SERVICE_NAME="web-mpa-${ENV}-eus2-$(echo '${{ needs.analyze-changes.outputs.resource-group-name }}' | cut -d'-' -f6)"
+            RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
+            
+            echo "🔍 Infrastructure output not available, discovering existing web app..."
+            echo "  Environment: $ENV"
+            echo "  Resource Group: $RG_NAME"
+            
+            # Try to find existing web app in the resource group
+            EXISTING_WEB_APPS=$(az webapp list --resource-group "$RG_NAME" --query "[?contains(name, 'web-mpa-${ENV}')].name" -o tsv 2>/dev/null || echo "")
+            
+            if [ -n "$EXISTING_WEB_APPS" ]; then
+              APP_SERVICE_NAME=$(echo "$EXISTING_WEB_APPS" | head -n1)
+              echo "✅ Found existing web app: $APP_SERVICE_NAME"
+            else
+              # Fallback to expected naming convention
+              SUFFIX=$(echo "$RG_NAME" | grep -o '[^-]*$' | head -c 8)
+              APP_SERVICE_NAME="web-mpa-${ENV}-eus2-${SUFFIX}"
+              echo "🎯 Using expected naming convention: $APP_SERVICE_NAME"
+            fi
           fi
           
           RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
