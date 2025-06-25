@@ -156,7 +156,7 @@ namespace MemberPropertyAlert.Functions.Services
             {
                 _logger.LogInformation("Getting all institutions (ActiveOnly: {ActiveOnly})", query.ActiveOnly);
 
-                var institutions = await _cosmosService.GetInstitutionsAsync();
+                var institutions = await _cosmosService.GetAllInstitutionsAsync();
                 
                 if (query.ActiveOnly)
                 {

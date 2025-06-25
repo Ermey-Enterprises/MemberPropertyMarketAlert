@@ -66,7 +66,7 @@ namespace MemberPropertyAlert.Core.Common
             ValidationErrors = validationErrors ?? new List<ValidationError>();
         }
 
-        public static new ValidationResult Success() => new(true, string.Empty, new List<ValidationError>());
+        public new static ValidationResult Success() => new(true, string.Empty, new List<ValidationError>());
         
         public static ValidationResult Failure(List<ValidationError> validationErrors)
         {
