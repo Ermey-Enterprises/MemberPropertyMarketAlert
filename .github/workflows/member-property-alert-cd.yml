@@ -104,6 +104,18 @@ jobs:
             # UI is considered changed if ANY UI project file changed
             UI_CHANGED=$UI_PROJECT_CHANGED
             
+            # FORCE UI DEPLOYMENT: If we have recent UI changes or workflow changes that affect UI deployment
+            # This ensures UI gets deployed when we fix deployment issues
+            if [ "$UI_CHANGED" -eq 0 ]; then
+              echo "🔍 No direct UI changes detected, checking for recent UI work..."
+              # Check if we have workflow changes that might be fixing UI deployment
+              WORKFLOW_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^\.github/workflows/member-property-alert-cd\.yml' | wc -l)
+              if [ "$WORKFLOW_CHANGED" -gt 0 ]; then
+                echo "🔧 Workflow changes detected - forcing UI deployment to test fixes"
+                UI_CHANGED=1
+              fi
+            fi
+            
             # Set outputs
             [ "$INFRA_CHANGED" -gt 0 ] && echo "infra-changed=true" >> $GITHUB_OUTPUT || echo "infra-changed=false" >> $GITHUB_OUTPUT
             [ "$FUNCTIONS_CHANGED" -gt 0 ] && echo "functions-changed=true" >> $GITHUB_OUTPUT || echo "functions-changed=false" >> $GITHUB_OUTPUT
@@ -117,10 +129,15 @@ jobs:
             echo "    - UI Config: $UI_CONFIG_CHANGED files"
             echo "  UI Changed (final): $UI_CHANGED files"
             
+            echo "🎯 Final deployment decisions:"
+            echo "  infra-changed: $([ "$INFRA_CHANGED" -gt 0 ] && echo 'true' || echo 'false')"
+            echo "  functions-changed: $([ "$FUNCTIONS_CHANGED" -gt 0 ] && echo 'true' || echo 'false')"
+            echo "  ui-changed: $([ "$UI_CHANGED" -gt 0 ] && echo 'true' || echo 'false')"
+            
             # Show specific UI changes for debugging
             if [ "$UI_CHANGED" -gt 0 ]; then
               echo "🎨 UI files changed:"
-              echo "$CHANGED_FILES" | grep -E '^src/MemberPropertyAlert\.UI/' | sed 's/^/  /'
+              echo "$CHANGED_FILES" | grep -E '^src/MemberPropertyAlert\.UI/' | sed 's/^/  /' || echo "  (forced due to workflow changes)"
             fi
           fi
       
