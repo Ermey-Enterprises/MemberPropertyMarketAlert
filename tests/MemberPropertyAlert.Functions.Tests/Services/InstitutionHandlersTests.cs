@@ -38,10 +38,9 @@ public class InstitutionHandlersTests
     {
         // Arrange
         var command = _fixture.Create<CreateInstitutionCommand>();
-        var expectedInstitution = _fixture.Create<Institution>();
         
         _cosmosService.Setup(x => x.CreateInstitutionAsync(It.IsAny<Institution>()))
-            .ReturnsAsync(expectedInstitution);
+            .ReturnsAsync((Institution institution) => institution);
 
         var handler = new CreateInstitutionCommandHandler(_createLogger.Object, _cosmosService.Object);
 
@@ -52,7 +51,7 @@ public class InstitutionHandlersTests
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().NotBeNull();
         result.Value.Name.Should().Be(command.Name);
-        result.Value.ContactEmail.Should().Be(command.ContactEmail);
+        result.Value.ContactEmail.Should().Be(command.ContactEmail ?? string.Empty);
         result.Value.WebhookUrl.Should().Be(command.WebhookUrl);
         result.Value.IsActive.Should().Be(command.IsActive);
         
