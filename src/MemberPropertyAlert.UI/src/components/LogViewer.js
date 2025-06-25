@@ -4,8 +4,6 @@ import {
   Typography,
   IconButton,
   Chip,
-  Paper,
-  Divider,
   useTheme,
   alpha,
   Tooltip,
@@ -17,7 +15,6 @@ import {
 import {
   Delete as DeleteIcon,
   Download as DownloadIcon,
-  Circle as CircleIcon,
 } from '@mui/icons-material';
 
 const LogViewer = ({ logs, onClearLogs, isConnected }) => {

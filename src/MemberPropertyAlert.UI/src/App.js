@@ -41,7 +41,7 @@ const NavigationContent = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const muiTheme = useMuiTheme();
-  const { isDarkMode, toggleTheme } = useTheme();
+  const { toggleTheme } = useTheme();
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
 

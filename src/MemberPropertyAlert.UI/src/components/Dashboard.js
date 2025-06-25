@@ -12,7 +12,6 @@ import {
   ListItemText,
   Divider,
   Chip,
-  Paper,
   useTheme,
   alpha,
 } from '@mui/material';
