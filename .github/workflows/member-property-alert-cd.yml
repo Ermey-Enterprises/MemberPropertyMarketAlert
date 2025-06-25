@@ -295,9 +295,17 @@ jobs:
           cp src/MemberPropertyAlert.UI/package.json ./publish/ui/
           cp src/MemberPropertyAlert.UI/package-lock.json ./publish/ui/ 2>/dev/null || echo "⚠️ package-lock.json not found, skipping"
           
-          echo "✅ UI deployment package prepared with Express server"
+          # Install production dependencies in the deployment package
+          echo "📦 Installing production dependencies for deployment..."
+          cd ./publish/ui
+          npm install --production --no-optional
+          cd ../..
+          
+          echo "✅ UI deployment package prepared with Express server and dependencies"
           echo "📋 Package contents:"
           ls -la ./publish/ui/
+          echo "📋 Node modules installed:"
+          ls -la ./publish/ui/node_modules/ | head -10
       
       - name: Upload Function App artifact
         if: needs.analyze-changes.outputs.functions-changed == 'true'
