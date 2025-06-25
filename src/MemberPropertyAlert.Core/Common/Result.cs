@@ -33,7 +33,7 @@ namespace MemberPropertyAlert.Core.Common
 
         protected internal Result(T value, bool isSuccess, string error) : base(isSuccess, error)
         {
-            _value = value;
+            _value = value!;
         }
 
         public T Value => IsSuccess ? _value : throw new InvalidOperationException("Cannot access value of failed result");
@@ -64,7 +64,7 @@ namespace MemberPropertyAlert.Core.Common
             ValidationErrors = validationErrors ?? new List<ValidationError>();
         }
 
-        public static ValidationResult Success() => new(true, string.Empty, new List<ValidationError>());
+        public static new ValidationResult Success() => new(true, string.Empty, new List<ValidationError>());
         
         public static ValidationResult Failure(List<ValidationError> validationErrors)
         {

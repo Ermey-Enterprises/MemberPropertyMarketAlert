@@ -16,7 +16,7 @@ namespace MemberPropertyAlert.Functions.Api
         }
 
         [Function("Health")]
-        public async Task<IActionResult> GetHealth(
+        public Task<IActionResult> GetHealth(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequest req)
         {
             _logger.LogInformation("Health check requested");
@@ -31,7 +31,7 @@ namespace MemberPropertyAlert.Functions.Api
                 LastUpdated = "2025-06-20T03:36:00Z" // Updated to trigger CI/CD test
             };
 
-            return new OkObjectResult(healthStatus);
+            return Task.FromResult<IActionResult>(new OkObjectResult(healthStatus));
         }
     }
 }
