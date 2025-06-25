@@ -1,7 +1,27 @@
 import React, { useRef, useEffect } from 'react';
-import { Trash2, Download } from 'lucide-react';
+import {
+  Box,
+  Typography,
+  IconButton,
+  Chip,
+  Paper,
+  Divider,
+  useTheme,
+  alpha,
+  Tooltip,
+  List,
+  ListItem,
+  ListItemText,
+  Badge,
+} from '@mui/material';
+import {
+  Delete as DeleteIcon,
+  Download as DownloadIcon,
+  Circle as CircleIcon,
+} from '@mui/icons-material';
 
 const LogViewer = ({ logs, onClearLogs, isConnected }) => {
+  const theme = useTheme();
   const logContainerRef = useRef(null);
 
   useEffect(() => {
@@ -14,15 +34,50 @@ const LogViewer = ({ logs, onClearLogs, isConnected }) => {
   const getLogLevelColor = (level) => {
     switch (level?.toLowerCase()) {
       case 'error':
-        return 'text-red-600 bg-red-50';
+        return {
+          color: theme.palette.error.main,
+          backgroundColor: alpha(theme.palette.error.main, 0.1),
+          borderColor: theme.palette.error.main,
+        };
       case 'warning':
-        return 'text-yellow-600 bg-yellow-50';
+        return {
+          color: theme.palette.warning.main,
+          backgroundColor: alpha(theme.palette.warning.main, 0.1),
+          borderColor: theme.palette.warning.main,
+        };
       case 'info':
-        return 'text-blue-600 bg-blue-50';
+        return {
+          color: theme.palette.info.main,
+          backgroundColor: alpha(theme.palette.info.main, 0.1),
+          borderColor: theme.palette.info.main,
+        };
       case 'debug':
-        return 'text-gray-600 bg-gray-50';
+        return {
+          color: theme.palette.grey[600],
+          backgroundColor: alpha(theme.palette.grey[500], 0.1),
+          borderColor: theme.palette.grey[400],
+        };
       default:
-        return 'text-gray-800 bg-white';
+        return {
+          color: theme.palette.text.primary,
+          backgroundColor: theme.palette.background.paper,
+          borderColor: theme.palette.divider,
+        };
+    }
+  };
+
+  const getLogLevelChipColor = (level) => {
+    switch (level?.toLowerCase()) {
+      case 'error':
+        return 'error';
+      case 'warning':
+        return 'warning';
+      case 'info':
+        return 'info';
+      case 'debug':
+        return 'default';
+      default:
+        return 'default';
     }
   };
 
@@ -47,79 +102,190 @@ const LogViewer = ({ logs, onClearLogs, isConnected }) => {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow h-96 flex flex-col">
+    <Box sx={{ height: 500, display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        <div className="flex items-center space-x-2">
-          <h3 className="text-lg font-medium text-gray-900">Activity Logs</h3>
-          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-        </div>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p: 2,
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6" component="h3" fontWeight="bold">
+            Activity Logs
+          </Typography>
+          <Badge
+            color={isConnected ? 'success' : 'error'}
+            variant="dot"
+            sx={{
+              '& .MuiBadge-badge': {
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+              },
+            }}
+          />
+        </Box>
         
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={downloadLogs}
-            disabled={logs.length === 0}
-            className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Download Logs"
-          >
-            <Download size={16} />
-          </button>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Tooltip title="Download Logs">
+            <span>
+              <IconButton
+                onClick={downloadLogs}
+                disabled={logs.length === 0}
+                size="small"
+                color="primary"
+              >
+                <DownloadIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
           
-          <button
-            onClick={onClearLogs}
-            disabled={logs.length === 0}
-            className="p-2 text-gray-500 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Clear Logs"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
+          <Tooltip title="Clear Logs">
+            <span>
+              <IconButton
+                onClick={onClearLogs}
+                disabled={logs.length === 0}
+                size="small"
+                color="error"
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
+      </Box>
 
       {/* Log Content */}
-      <div 
+      <Box
         ref={logContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-sm"
+        sx={{
+          flexGrow: 1,
+          overflow: 'auto',
+          p: 1,
+          bgcolor: alpha(theme.palette.background.default, 0.5),
+        }}
       >
         {logs.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
-            <div className="text-gray-400 mb-2">No logs yet</div>
-            <div className="text-xs">
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              textAlign: 'center',
+              color: 'text.secondary',
+            }}
+          >
+            <Typography variant="body1" gutterBottom>
+              No logs yet
+            </Typography>
+            <Typography variant="caption">
               {isConnected ? 'Waiting for activity...' : 'Disconnected from log stream'}
-            </div>
-          </div>
+            </Typography>
+          </Box>
         ) : (
-          logs.map((log, index) => (
-            <div
-              key={index}
-              className={`p-2 rounded text-xs border-l-4 ${getLogLevelColor(log.level)}`}
-              style={{ borderLeftColor: getLogLevelColor(log.level).includes('red') ? '#dc2626' : 
-                                        getLogLevelColor(log.level).includes('yellow') ? '#d97706' :
-                                        getLogLevelColor(log.level).includes('blue') ? '#2563eb' : '#6b7280' }}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="font-medium">
-                    [{formatTimestamp(log.timestamp)}] {log.level?.toUpperCase() || 'INFO'}
-                  </div>
-                  <div className="mt-1 whitespace-pre-wrap">{log.message}</div>
-                  {log.details && (
-                    <div className="mt-1 text-xs opacity-75">
-                      {typeof log.details === 'string' ? log.details : JSON.stringify(log.details, null, 2)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))
+          <List dense sx={{ py: 0 }}>
+            {logs.map((log, index) => {
+              const levelStyle = getLogLevelColor(log.level);
+              return (
+                <ListItem
+                  key={index}
+                  sx={{
+                    mb: 1,
+                    p: 1.5,
+                    borderRadius: 1,
+                    borderLeft: 3,
+                    borderLeftColor: levelStyle.borderColor,
+                    backgroundColor: levelStyle.backgroundColor,
+                    color: levelStyle.color,
+                    fontFamily: 'monospace',
+                    fontSize: '0.75rem',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                        <Typography
+                          variant="caption"
+                          component="span"
+                          sx={{ fontFamily: 'monospace', fontWeight: 'bold' }}
+                        >
+                          [{formatTimestamp(log.timestamp)}]
+                        </Typography>
+                        <Chip
+                          label={log.level?.toUpperCase() || 'INFO'}
+                          size="small"
+                          color={getLogLevelChipColor(log.level)}
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.6rem' }}
+                        />
+                      </Box>
+                    }
+                    secondary={
+                      <Box>
+                        <Typography
+                          variant="body2"
+                          component="div"
+                          sx={{
+                            fontFamily: 'monospace',
+                            fontSize: '0.75rem',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            mt: 0.5,
+                          }}
+                        >
+                          {log.message}
+                        </Typography>
+                        {log.details && (
+                          <Typography
+                            variant="caption"
+                            component="div"
+                            sx={{
+                              fontFamily: 'monospace',
+                              opacity: 0.8,
+                              mt: 0.5,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {typeof log.details === 'string' 
+                              ? log.details 
+                              : JSON.stringify(log.details, null, 2)
+                            }
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                  />
+                </ListItem>
+              );
+            })}
+          </List>
         )}
-      </div>
+      </Box>
 
       {/* Footer */}
-      <div className="px-4 py-2 border-t border-gray-200 text-xs text-gray-500">
-        {logs.length} log entries • {isConnected ? 'Live' : 'Offline'}
-      </div>
-    </div>
+      <Box
+        sx={{
+          px: 2,
+          py: 1,
+          borderTop: 1,
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+        }}
+      >
+        <Typography variant="caption" color="text.secondary">
+          {logs.length} log entries • {isConnected ? 'Live' : 'Offline'}
+        </Typography>
+      </Box>
+    </Box>
   );
 };
 

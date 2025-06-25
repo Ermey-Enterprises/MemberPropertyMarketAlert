@@ -1,8 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Users, Home, AlertTriangle } from 'lucide-react';
+import {
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  Avatar,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  Divider,
+  Chip,
+  Paper,
+  useTheme,
+  alpha,
+} from '@mui/material';
+import {
+  Business as BusinessIcon,
+  Home as HomeIcon,
+  Warning as WarningIcon,
+  TrendingUp as TrendingUpIcon,
+  Circle as CircleIcon,
+} from '@mui/icons-material';
 import axios from 'axios';
 
 const Dashboard = () => {
+  const theme = useTheme();
   const [stats, setStats] = useState({
     totalInstitutions: 0,
     totalProperties: 0,
@@ -29,92 +53,198 @@ const Dashboard = () => {
     }
   };
 
+  const statCards = [
+    {
+      title: 'Institutions',
+      value: stats.totalInstitutions,
+      icon: BusinessIcon,
+      color: theme.palette.primary.main,
+      bgColor: alpha(theme.palette.primary.main, 0.1),
+    },
+    {
+      title: 'Properties Monitored',
+      value: stats.totalProperties.toLocaleString(),
+      icon: HomeIcon,
+      color: theme.palette.success.main,
+      bgColor: alpha(theme.palette.success.main, 0.1),
+    },
+    {
+      title: 'Active Alerts',
+      value: stats.activeAlerts,
+      icon: WarningIcon,
+      color: theme.palette.warning.main,
+      bgColor: alpha(theme.palette.warning.main, 0.1),
+    },
+    {
+      title: 'Recent Matches',
+      value: stats.recentMatches,
+      icon: TrendingUpIcon,
+      color: theme.palette.error.main,
+      bgColor: alpha(theme.palette.error.main, 0.1),
+    },
+  ];
+
+  const getActivityColor = (type) => {
+    switch (type) {
+      case 'match':
+        return theme.palette.error.main;
+      case 'scan':
+        return theme.palette.primary.main;
+      default:
+        return theme.palette.grey[500];
+    }
+  };
+
+  const getActivityChipColor = (type) => {
+    switch (type) {
+      case 'match':
+        return 'error';
+      case 'scan':
+        return 'primary';
+      default:
+        return 'default';
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-        <p className="text-gray-600">Monitor your property alert system</p>
-      </div>
+    <Box>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
+          Dashboard
+        </Typography>
+        <Typography variant="subtitle1" color="text.secondary">
+          Monitor your property alert system
+        </Typography>
+      </Box>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Users className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Institutions</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.totalInstitutions}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Home className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Properties Monitored</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.totalProperties.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <AlertTriangle className="h-6 w-6 text-yellow-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Active Alerts</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.activeAlerts}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <BarChart3 className="h-6 w-6 text-red-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Recent Matches</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.recentMatches}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {statCards.map((stat, index) => {
+          const IconComponent = stat.icon;
+          return (
+            <Grid item xs={12} sm={6} lg={3} key={index}>
+              <Card
+                elevation={2}
+                sx={{
+                  height: '100%',
+                  transition: 'all 0.3s ease-in-out',
+                  '&:hover': {
+                    elevation: 4,
+                    transform: 'translateY(-2px)',
+                  },
+                }}
+              >
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Avatar
+                      sx={{
+                        bgcolor: stat.bgColor,
+                        color: stat.color,
+                        width: 56,
+                        height: 56,
+                        mr: 2,
+                      }}
+                    >
+                      <IconComponent fontSize="large" />
+                    </Avatar>
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        fontWeight="medium"
+                        gutterBottom
+                      >
+                        {stat.title}
+                      </Typography>
+                      <Typography
+                        variant="h4"
+                        component="div"
+                        fontWeight="bold"
+                        color="text.primary"
+                      >
+                        {stat.value}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
+      </Grid>
 
       {/* Recent Activity */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Recent Activity</h3>
-        </div>
-        <div className="p-6">
+      <Card elevation={2}>
+        <CardContent sx={{ p: 0 }}>
+          <Box sx={{ p: 3, pb: 1 }}>
+            <Typography variant="h6" component="h2" fontWeight="bold">
+              Recent Activity
+            </Typography>
+          </Box>
+          
           {recentActivity.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No recent activity</p>
+            <Box sx={{ p: 4, textAlign: 'center' }}>
+              <Typography variant="body1" color="text.secondary">
+                No recent activity
+              </Typography>
+            </Box>
           ) : (
-            <div className="space-y-4">
+            <List sx={{ pt: 0 }}>
               {recentActivity.map((activity, index) => (
-                <div key={index} className="flex items-start space-x-3">
-                  <div className={`flex-shrink-0 w-2 h-2 rounded-full mt-2 ${
-                    activity.type === 'match' ? 'bg-red-500' :
-                    activity.type === 'scan' ? 'bg-blue-500' :
-                    'bg-gray-500'
-                  }`}></div>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-900">{activity.message}</p>
-                    <p className="text-xs text-gray-500">{new Date(activity.timestamp).toLocaleString()}</p>
-                  </div>
-                </div>
+                <React.Fragment key={index}>
+                  <ListItem
+                    sx={{
+                      py: 2,
+                      px: 3,
+                      '&:hover': {
+                        bgcolor: alpha(theme.palette.primary.main, 0.04),
+                      },
+                    }}
+                  >
+                    <ListItemAvatar>
+                      <Avatar
+                        sx={{
+                          bgcolor: alpha(getActivityColor(activity.type), 0.1),
+                          color: getActivityColor(activity.type),
+                          width: 40,
+                          height: 40,
+                        }}
+                      >
+                        <CircleIcon fontSize="small" />
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body1" component="span">
+                            {activity.message}
+                          </Typography>
+                          <Chip
+                            label={activity.type}
+                            size="small"
+                            color={getActivityChipColor(activity.type)}
+                            variant="outlined"
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <Typography variant="caption" color="text.secondary">
+                          {new Date(activity.timestamp).toLocaleString()}
+                        </Typography>
+                      }
+                    />
+                  </ListItem>
+                  {index < recentActivity.length - 1 && (
+                    <Divider variant="inset" component="li" />
+                  )}
+                </React.Fragment>
               ))}
-            </div>
+            </List>
           )}
-        </div>
-      </div>
-    </div>
+        </CardContent>
+      </Card>
+    </Box>
   );
 };
 

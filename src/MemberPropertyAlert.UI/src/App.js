@@ -1,16 +1,164 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { HubConnectionBuilder } from '@microsoft/signalr';
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Box,
+  Container,
+  Grid,
+  Paper,
+  BottomNavigation,
+  BottomNavigationAction,
+  IconButton,
+  Chip,
+  useMediaQuery,
+  useTheme as useMuiTheme,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+} from '@mui/material';
+import {
+  Dashboard as DashboardIcon,
+  Business as BusinessIcon,
+  Brightness4,
+  Brightness7,
+  Menu as MenuIcon,
+  Close as CloseIcon,
+} from '@mui/icons-material';
+import { CustomThemeProvider, useTheme } from './contexts/ThemeContext';
 import Dashboard from './components/Dashboard';
 import ScanControl from './components/ScanControl';
 import LogViewer from './components/LogViewer';
 import InstitutionManager from './components/InstitutionManager';
-import './App.css';
 
-function App() {
+// Navigation component that uses hooks
+const NavigationContent = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const muiTheme = useMuiTheme();
+  const { isDarkMode, toggleTheme } = useTheme();
+  const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'));
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
+
+  const navigationItems = [
+    { label: 'Dashboard', path: '/', icon: <DashboardIcon /> },
+    { label: 'Institutions', path: '/institutions', icon: <BusinessIcon /> },
+  ];
+
+  const drawer = (
+    <Box sx={{ width: 250 }}>
+      <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6" component="div">
+          Menu
+        </Typography>
+        <IconButton onClick={handleDrawerToggle}>
+          <CloseIcon />
+        </IconButton>
+      </Box>
+      <Divider />
+      <List>
+        {navigationItems.map((item) => (
+          <ListItem
+            button
+            key={item.path}
+            selected={location.pathname === item.path}
+            onClick={() => {
+              navigate(item.path);
+              setMobileOpen(false);
+            }}
+          >
+            <ListItemIcon>{item.icon}</ListItemIcon>
+            <ListItemText primary={item.label} />
+          </ListItem>
+        ))}
+      </List>
+    </Box>
+  );
+
+  return (
+    <>
+      {/* Mobile Drawer */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={handleDrawerToggle}
+        ModalProps={{
+          keepMounted: true, // Better open performance on mobile.
+        }}
+        sx={{
+          display: { xs: 'block', md: 'none' },
+          '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 250 },
+        }}
+      >
+        {drawer}
+      </Drawer>
+
+      {/* Bottom Navigation for Mobile */}
+      {isMobile && (
+        <Paper
+          sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1000 }}
+          elevation={3}
+        >
+          <BottomNavigation
+            value={location.pathname}
+            onChange={(event, newValue) => {
+              navigate(newValue);
+            }}
+            showLabels
+          >
+            {navigationItems.map((item) => (
+              <BottomNavigationAction
+                key={item.path}
+                label={item.label}
+                value={item.path}
+                icon={item.icon}
+              />
+            ))}
+          </BottomNavigation>
+        </Paper>
+      )}
+    </>
+  );
+};
+
+// Connection status component
+const ConnectionStatus = ({ isConnected }) => (
+  <Chip
+    icon={
+      <Box
+        sx={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          backgroundColor: isConnected ? 'success.main' : 'error.main',
+        }}
+      />
+    }
+    label={isConnected ? 'Connected' : 'Disconnected'}
+    color={isConnected ? 'success' : 'error'}
+    variant="outlined"
+    size="small"
+  />
+);
+
+// Main App Content
+const AppContent = () => {
   const [connection, setConnection] = useState(null);
   const [logs, setLogs] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
+  const muiTheme = useMuiTheme();
+  const { isDarkMode, toggleTheme } = useTheme();
+  const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'));
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     // Initialize SignalR connection for real-time logs
@@ -54,74 +202,98 @@ function App() {
     setLogs([]);
   };
 
-  return (
-    <Router>
-      <div className="min-h-screen bg-gray-100">
-        {/* Navigation Header */}
-        <nav className="bg-white shadow-lg">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center">
-                <h1 className="text-xl font-bold text-gray-900">
-                  Member Property Alert - Admin Dashboard
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className={`flex items-center space-x-2 ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
-                  <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className="text-sm">{isConnected ? 'Connected' : 'Disconnected'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </nav>
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
 
-        {/* Main Content */}
-        <div className="max-w-7xl mx-auto py-6 px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column - Controls */}
-            <div className="lg:col-span-2 space-y-6">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/institutions" element={<InstitutionManager />} />
-              </Routes>
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {/* App Bar */}
+      <AppBar position="sticky" elevation={2}>
+        <Toolbar>
+          {isMobile && (
+            <IconButton
+              color="inherit"
+              aria-label="open drawer"
+              edge="start"
+              onClick={handleDrawerToggle}
+              sx={{ mr: 2 }}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
+          
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Member Property Alert - Admin Dashboard
+          </Typography>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <ConnectionStatus isConnected={isConnected} />
+            
+            <IconButton
+              color="inherit"
+              onClick={toggleTheme}
+              aria-label="toggle theme"
+            >
+              {isDarkMode ? <Brightness7 /> : <Brightness4 />}
+            </IconButton>
+          </Box>
+        </Toolbar>
+      </AppBar>
+
+      {/* Navigation */}
+      <NavigationContent />
+
+      {/* Main Content */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          bgcolor: 'background.default',
+          pb: isMobile ? 8 : 3, // Add bottom padding for mobile navigation
+        }}
+      >
+        <Container maxWidth="xl" sx={{ py: 3 }}>
+          <Grid container spacing={3}>
+            {/* Left Column - Main Content */}
+            <Grid item xs={12} lg={8}>
+              <Box sx={{ mb: 3 }}>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/institutions" element={<InstitutionManager />} />
+                </Routes>
+              </Box>
               
               {/* Scan Controls */}
-              <ScanControl connection={connection} />
-            </div>
+              <Paper elevation={2} sx={{ p: 3 }}>
+                <ScanControl connection={connection} />
+              </Paper>
+            </Grid>
 
             {/* Right Column - Log Viewer */}
-            <div className="lg:col-span-1">
-              <LogViewer 
-                logs={logs} 
-                onClearLogs={clearLogs}
-                isConnected={isConnected}
-              />
-            </div>
-          </div>
-        </div>
+            <Grid item xs={12} lg={4}>
+              <Paper elevation={2} sx={{ height: 'fit-content' }}>
+                <LogViewer 
+                  logs={logs} 
+                  onClearLogs={clearLogs}
+                  isConnected={isConnected}
+                />
+              </Paper>
+            </Grid>
+          </Grid>
+        </Container>
+      </Box>
+    </Box>
+  );
+};
 
-        {/* Navigation Tabs */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex space-x-8">
-              <Link 
-                to="/" 
-                className="py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
-              >
-                Dashboard
-              </Link>
-              <Link 
-                to="/institutions" 
-                className="py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
-              >
-                Institutions
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Router>
+function App() {
+  return (
+    <CustomThemeProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </CustomThemeProvider>
   );
 }
 
