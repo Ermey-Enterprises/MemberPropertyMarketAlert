@@ -43,12 +43,12 @@ namespace MemberPropertyAlert.Functions.Services
                 var createdInstitution = await _cosmosService.CreateInstitutionAsync(institution);
                 
                 _logger.LogInformation("Institution created successfully: {InstitutionId}", createdInstitution.Id);
-                return Result<Institution>.Success(createdInstitution);
+                return Result.Success(createdInstitution);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating institution: {Name}", command.Name);
-                return Result<Institution>.Failure($"Failed to create institution: {ex.Message}");
+                return Result.Failure<Institution>($"Failed to create institution: {ex.Message}");
             }
         }
     }
@@ -75,7 +75,7 @@ namespace MemberPropertyAlert.Functions.Services
                 var existingInstitution = await _cosmosService.GetInstitutionAsync(command.Id);
                 if (existingInstitution == null)
                 {
-                    return Result<Institution>.Failure($"Institution with ID {command.Id} not found");
+                    return Result.Failure<Institution>($"Institution with ID {command.Id} not found");
                 }
 
                 existingInstitution.Name = command.Name;
@@ -88,12 +88,12 @@ namespace MemberPropertyAlert.Functions.Services
                 var updatedInstitution = await _cosmosService.UpdateInstitutionAsync(existingInstitution);
                 
                 _logger.LogInformation("Institution updated successfully: {InstitutionId}", updatedInstitution.Id);
-                return Result<Institution>.Success(updatedInstitution);
+                return Result.Success(updatedInstitution);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating institution: {InstitutionId}", command.Id);
-                return Result<Institution>.Failure($"Failed to update institution: {ex.Message}");
+                return Result.Failure<Institution>($"Failed to update institution: {ex.Message}");
             }
         }
     }
@@ -165,12 +165,12 @@ namespace MemberPropertyAlert.Functions.Services
                 }
 
                 _logger.LogInformation("Retrieved {Count} institutions", result.Count());
-                return Result<IEnumerable<Institution>>.Success(result);
+                return Result.Success(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting institutions");
-                return Result<IEnumerable<Institution>>.Failure($"Failed to get institutions: {ex.Message}");
+                return Result.Failure<IEnumerable<Institution>>($"Failed to get institutions: {ex.Message}");
             }
         }
     }
@@ -198,16 +198,16 @@ namespace MemberPropertyAlert.Functions.Services
                 
                 if (institution == null)
                 {
-                    return Result<Institution>.Failure($"Institution with ID {query.Id} not found");
+                    return Result.Failure<Institution>($"Institution with ID {query.Id} not found");
                 }
 
                 _logger.LogInformation("Retrieved institution: {InstitutionId}", institution.Id);
-                return Result<Institution>.Success(institution);
+                return Result.Success(institution);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting institution by ID: {InstitutionId}", query.Id);
-                return Result<Institution>.Failure($"Failed to get institution: {ex.Message}");
+                return Result.Failure<Institution>($"Failed to get institution: {ex.Message}");
             }
         }
     }
