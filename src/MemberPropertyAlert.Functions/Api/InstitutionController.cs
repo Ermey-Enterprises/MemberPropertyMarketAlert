@@ -91,7 +91,7 @@ namespace MemberPropertyAlert.Functions.Api
             try
             {
                 var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-                var institutionRequest = JsonSerializer.Deserialize<CreateInstitutionRequest>(requestBody, new JsonSerializerOptions
+                CreateInstitutionRequest? institutionRequest = JsonSerializer.Deserialize<CreateInstitutionRequest>(requestBody, new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 });
@@ -188,7 +188,7 @@ namespace MemberPropertyAlert.Functions.Api
             try
             {
                 var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-                var updateRequest = JsonSerializer.Deserialize<UpdateInstitutionRequest>(requestBody, new JsonSerializerOptions
+                UpdateInstitutionRequest? updateRequest = JsonSerializer.Deserialize<UpdateInstitutionRequest>(requestBody, new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 });

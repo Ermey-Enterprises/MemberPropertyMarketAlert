@@ -21,7 +21,7 @@ namespace MemberPropertyAlert.Core.Common
         public static Result Failure(string error) => new(false, error);
 
         public static Result<T> Success<T>(T value) => new(value, true, string.Empty);
-        public static Result<T> Failure<T>(string error) => new(default, false, error);
+        public static Result<T> Failure<T>(string error) => new(default!, false, error);
     }
 
     /// <summary>
@@ -33,7 +33,7 @@ namespace MemberPropertyAlert.Core.Common
 
         protected internal Result(T value, bool isSuccess, string error) : base(isSuccess, error)
         {
-            if (isSuccess && value == null)
+            if (isSuccess && value is null)
                 throw new ArgumentNullException(nameof(value), "Value cannot be null for successful result");
             _value = value!;
         }
