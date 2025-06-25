@@ -223,6 +223,11 @@ namespace MemberPropertyAlert.Functions.Services
 
         public async Task<ValidationResult> ValidateAsync(CreateInstitutionCommand command)
         {
+            return await Task.FromResult(Validate(command));
+        }
+
+        public ValidationResult Validate(CreateInstitutionCommand command)
+        {
             var errors = new List<ValidationError>();
 
             if (string.IsNullOrWhiteSpace(command.Name))
@@ -264,8 +269,6 @@ namespace MemberPropertyAlert.Functions.Services
                 });
             }
 
-            await Task.CompletedTask; // For async consistency
-
             return errors.Any() 
                 ? ValidationResult.Failure(errors)
                 : ValidationResult.Success();
@@ -301,6 +304,11 @@ namespace MemberPropertyAlert.Functions.Services
         }
 
         public async Task<ValidationResult> ValidateAsync(UpdateInstitutionCommand command)
+        {
+            return await Task.FromResult(Validate(command));
+        }
+
+        public ValidationResult Validate(UpdateInstitutionCommand command)
         {
             var errors = new List<ValidationError>();
 
@@ -352,8 +360,6 @@ namespace MemberPropertyAlert.Functions.Services
                     AttemptedValue = command.WebhookUrl
                 });
             }
-
-            await Task.CompletedTask; // For async consistency
 
             return errors.Any() 
                 ? ValidationResult.Failure(errors)
