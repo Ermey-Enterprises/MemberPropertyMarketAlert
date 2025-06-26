@@ -37,7 +37,13 @@ public class InstitutionHandlersTests
     public async Task CreateInstitutionCommandHandler_WithValidCommand_ShouldReturnSuccess()
     {
         // Arrange
-        var command = _fixture.Create<CreateInstitutionCommand>();
+        var command = new CreateInstitutionCommand
+        {
+            Name = "Test Institution",
+            ContactEmail = "test@example.com",
+            WebhookUrl = "https://example.com/webhook",
+            IsActive = true
+        };
         
         _cosmosService.Setup(x => x.CreateInstitutionAsync(It.IsAny<Institution>()))
             .ReturnsAsync((Institution institution) => institution);
@@ -51,9 +57,12 @@ public class InstitutionHandlersTests
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().NotBeNull();
         result.Value.Name.Should().Be(command.Name);
-        result.Value.ContactEmail.Should().Be(command.ContactEmail ?? string.Empty);
+        result.Value.ContactEmail.Should().Be(command.ContactEmail);
         result.Value.WebhookUrl.Should().Be(command.WebhookUrl);
         result.Value.IsActive.Should().Be(command.IsActive);
+        result.Value.Id.Should().NotBeNullOrEmpty();
+        result.Value.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+        result.Value.UpdatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
         
         _cosmosService.Verify(x => x.CreateInstitutionAsync(It.IsAny<Institution>()), Times.Once);
     }
