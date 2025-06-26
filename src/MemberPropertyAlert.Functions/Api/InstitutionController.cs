@@ -201,8 +201,8 @@ namespace MemberPropertyAlert.Functions.Api
                 var command = new UpdateInstitutionCommand
                 {
                     Id = institutionId,
-                    Name = updateRequest.Name,
-                    ContactEmail = updateRequest.ContactEmail,
+                    Name = updateRequest.Name ?? string.Empty,
+                    ContactEmail = updateRequest.ContactEmail ?? string.Empty,
                     WebhookUrl = updateRequest.WebhookUrl,
                     NotificationSettings = updateRequest.NotificationSettings,
                     IsActive = updateRequest.IsActive ?? true

@@ -45,8 +45,13 @@ public class InstitutionHandlersTests
             IsActive = true
         };
         
+        // Setup the mock to return the exact institution that was passed to it
         _cosmosService.Setup(x => x.CreateInstitutionAsync(It.IsAny<Institution>()))
-            .ReturnsAsync((Institution institution) => institution);
+            .ReturnsAsync((Institution institution) => 
+            {
+                // Return the same institution object that was passed in
+                return institution;
+            });
 
         var handler = new CreateInstitutionCommandHandler(_createLogger.Object, _cosmosService.Object);
 
@@ -64,7 +69,11 @@ public class InstitutionHandlersTests
         result.Value.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
         result.Value.UpdatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
         
-        _cosmosService.Verify(x => x.CreateInstitutionAsync(It.IsAny<Institution>()), Times.Once);
+        _cosmosService.Verify(x => x.CreateInstitutionAsync(It.Is<Institution>(i => 
+            i.Name == command.Name && 
+            i.ContactEmail == command.ContactEmail && 
+            i.WebhookUrl == command.WebhookUrl && 
+            i.IsActive == command.IsActive)), Times.Once);
     }
 
     [Fact]

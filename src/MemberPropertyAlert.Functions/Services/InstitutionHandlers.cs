@@ -31,10 +31,10 @@ namespace MemberPropertyAlert.Functions.Services
                 var institution = new Institution
                 {
                     Id = Guid.NewGuid().ToString(),
-                    Name = command.Name,
+                    Name = command.Name ?? string.Empty,
                     ContactEmail = command.ContactEmail ?? string.Empty,
                     WebhookUrl = command.WebhookUrl,
-                    NotificationSettings = command.NotificationSettings,
+                    NotificationSettings = command.NotificationSettings ?? new NotificationSettings(),
                     IsActive = command.IsActive,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -78,10 +78,10 @@ namespace MemberPropertyAlert.Functions.Services
                     return Result.Failure<Institution>($"Institution with ID {command.Id} not found");
                 }
 
-                existingInstitution.Name = command.Name;
+                existingInstitution.Name = command.Name ?? string.Empty;
                 existingInstitution.ContactEmail = command.ContactEmail ?? string.Empty;
                 existingInstitution.WebhookUrl = command.WebhookUrl;
-                existingInstitution.NotificationSettings = command.NotificationSettings;
+                existingInstitution.NotificationSettings = command.NotificationSettings ?? existingInstitution.NotificationSettings;
                 existingInstitution.IsActive = command.IsActive;
                 existingInstitution.UpdatedAt = DateTime.UtcNow;
 
