@@ -55,28 +55,28 @@ const Dashboard = () => {
   const statCards = [
     {
       title: 'Institutions',
-      value: stats.totalInstitutions,
+      value: stats.totalInstitutions || 0,
       icon: BusinessIcon,
       color: theme.palette.primary.main,
       bgColor: alpha(theme.palette.primary.main, 0.1),
     },
     {
       title: 'Properties Monitored',
-      value: stats.totalProperties.toLocaleString(),
+      value: (stats.totalProperties || 0).toLocaleString(),
       icon: HomeIcon,
       color: theme.palette.success.main,
       bgColor: alpha(theme.palette.success.main, 0.1),
     },
     {
       title: 'Active Alerts',
-      value: stats.activeAlerts,
+      value: stats.activeAlerts || 0,
       icon: WarningIcon,
       color: theme.palette.warning.main,
       bgColor: alpha(theme.palette.warning.main, 0.1),
     },
     {
       title: 'Recent Matches',
-      value: stats.recentMatches,
+      value: stats.recentMatches || 0,
       icon: TrendingUpIcon,
       color: theme.palette.error.main,
       bgColor: alpha(theme.palette.error.main, 0.1),

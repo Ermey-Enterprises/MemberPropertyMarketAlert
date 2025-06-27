@@ -208,22 +208,22 @@ const ScanControl = ({ connection }) => {
         
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           <div className="bg-blue-50 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-blue-600">{scanStats.totalStates}</div>
+            <div className="text-2xl font-bold text-blue-600">{scanStats.totalStates || 0}</div>
             <div className="text-sm text-gray-600">States Monitored</div>
           </div>
           
           <div className="bg-green-50 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-green-600">{scanStats.propertiesMonitored.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-green-600">{(scanStats.propertiesMonitored || 0).toLocaleString()}</div>
             <div className="text-sm text-gray-600">Properties Monitored</div>
           </div>
           
           <div className="bg-yellow-50 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-yellow-600">{scanStats.newListings}</div>
+            <div className="text-2xl font-bold text-yellow-600">{scanStats.newListings || 0}</div>
             <div className="text-sm text-gray-600">New Listings Today</div>
           </div>
           
           <div className="bg-red-50 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-red-600">{scanStats.matches}</div>
+            <div className="text-2xl font-bold text-red-600">{scanStats.matches || 0}</div>
             <div className="text-sm text-gray-600">Member Matches</div>
           </div>
         </div>
