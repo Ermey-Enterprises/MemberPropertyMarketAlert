@@ -623,19 +623,69 @@ jobs:
             exit 1
           fi
           
+          # Configure Web App for Node.js startup
+          echo "⚙️ Configuring Web App settings for Node.js..."
+          
+          # Set startup command for Node.js
+          az webapp config set \
+            --resource-group "$RG_NAME" \
+            --name "$APP_SERVICE_NAME" \
+            --startup-file "node server.js" \
+            --output none
+          
+          # Set Node.js version and other app settings
+          az webapp config appsettings set \
+            --resource-group "$RG_NAME" \
+            --name "$APP_SERVICE_NAME" \
+            --settings \
+              WEBSITE_NODE_DEFAULT_VERSION="18" \
+              NODE_ENV="production" \
+              PORT="8080" \
+              WEBSITE_RUN_FROM_PACKAGE="1" \
+            --output none
+          
+          echo "✅ Web App configuration updated"
+          
           # Create deployment package
           cd ./publish
           zip -r ../web-app.zip . > /dev/null 2>&1
           cd ..
           
-          # Deploy
+          # Deploy with timeout and better error handling
           echo "🚀 Deploying Web App..."
+          
+          # Deploy without async to wait for completion and get better error reporting
           az webapp deploy \
             --resource-group "$RG_NAME" \
             --name "$APP_SERVICE_NAME" \
             --src-path "./web-app.zip" \
             --type zip \
-            --async true
+            --timeout 600
+          
+          # Check deployment status
+          echo "🔍 Checking deployment status..."
+          sleep 30  # Give it time to start
+          
+          # Get app service URL for health check
+          APP_URL=$(az webapp show --resource-group "$RG_NAME" --name "$APP_SERVICE_NAME" --query "defaultHostName" --output tsv)
+          
+          if [ -n "$APP_URL" ]; then
+            echo "🌐 App URL: https://$APP_URL"
+            echo "🏥 Health check URL: https://$APP_URL/health"
+            
+            # Try to hit the health endpoint
+            echo "🔍 Testing health endpoint..."
+            for i in {1..5}; do
+              echo "  Attempt $i/5..."
+              if curl -f -s --max-time 30 "https://$APP_URL/health" > /dev/null; then
+                echo "✅ Health check passed!"
+                break
+              else
+                echo "⏳ Health check failed, waiting 30s..."
+                sleep 30
+              fi
+            done
+          fi
           
           # Clean up
           rm -f "./web-app.zip"

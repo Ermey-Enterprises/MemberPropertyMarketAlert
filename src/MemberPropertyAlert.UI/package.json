@@ -33,6 +33,7 @@
     "eject": "react-scripts eject",
     "serve": "node server.js"
   },
+  "main": "server.js",
   "eslintConfig": {
     "extends": [
       "react-app",
