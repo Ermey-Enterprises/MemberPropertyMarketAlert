@@ -1,5 +1,7 @@
 #!/usr/bin/env pwsh
 
+# Test change for git push verification - can be removed later
+
 <#
 .SYNOPSIS
     Local testing script for MemberPropertyMarketAlert solution
