@@ -36,6 +36,13 @@ import ScanControl from './components/ScanControl';
 import LogViewer from './components/LogViewer';
 import InstitutionManager from './components/InstitutionManager';
 
+// Debug logging
+// Debug logging
+console.log('🚀 Member Property Alert UI - App.js loading');
+console.log('🔧 Environment:', process.env.NODE_ENV);
+console.log('🔧 React App API Base URL:', process.env.REACT_APP_API_BASE_URL);
+console.log('🔧 React App Environment:', process.env.REACT_APP_ENVIRONMENT);
+
 // Navigation component that uses hooks
 const NavigationContent = () => {
   const location = useLocation();

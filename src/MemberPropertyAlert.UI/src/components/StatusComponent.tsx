@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import config from '../config/apiConfig';
 
 interface StatusInfo {
   version: string;
@@ -16,17 +17,20 @@ const StatusComponent: React.FC = () => {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || '';
-        const response = await fetch(`${apiBaseUrl}/status`);
+        console.log('🔍 Fetching status from:', `${config.apiBaseUrl}/status`);
+        const response = await fetch(`${config.apiBaseUrl}/status`);
         
         if (!response.ok) {
-          throw new Error('Failed to fetch status');
+          throw new Error(`Failed to fetch status: ${response.status} ${response.statusText}`);
         }
         
         const data = await response.json();
         setStatus(data);
+        console.log('✅ Status fetched successfully:', data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        console.error('❌ Status fetch error:', errorMessage);
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
