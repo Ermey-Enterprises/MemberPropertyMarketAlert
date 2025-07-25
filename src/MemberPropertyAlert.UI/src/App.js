@@ -36,7 +36,6 @@ import ScanControl from './components/ScanControl';
 import LogViewer from './components/LogViewer';
 import InstitutionManager from './components/InstitutionManager';
 import ErrorBoundary from './components/ErrorBoundary';
-import config from './config/apiConfig';
 
 // Debug logging
 console.log('🚀 Member Property Alert UI - App.js loading');
@@ -171,7 +170,7 @@ const ConnectionStatus = ({ isConnected }) => (
 const AppContent = () => {
   console.log('🚀 AppContent component rendering...');
   
-  const [connection, setConnection] = useState(null);
+  const [connection, setConnection] = useState(null); // SignalR connection
   const [logs, setLogs] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   const muiTheme = useMuiTheme();
@@ -180,61 +179,58 @@ const AppContent = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    // Delay SignalR connection to allow the app to render first
-    const timer = setTimeout(() => {
-      console.log('🔌 Setting up SignalR connection...');
+    // SignalR connection - connect to the Web App's LogHub (same origin)
+    console.log('🔌 Setting up SignalR connection to Web App LogHub...');
+    
+    let connectionInstance = null;
+    
+    try {
+      // Connect to the LogHub on the same Web App (no CORS needed)
+      const hubUrl = '/api/loghub'; // Relative URL - same origin as React app
+      console.log('🔗 SignalR Hub URL:', hubUrl);
       
-      try {
-        // Build the SignalR hub URL - it should point to the Function App, not the Web App
-        const hubUrl = `${config.apiBaseUrl}/loghub`;
-        console.log('🔗 SignalR Hub URL:', hubUrl);
-        
-        // Initialize SignalR connection for real-time logs
-        const newConnection = new HubConnectionBuilder()
-          .withUrl(hubUrl)
-          .build();
+      // Initialize SignalR connection for real-time logs
+      connectionInstance = new HubConnectionBuilder()
+        .withUrl(hubUrl)
+        .build();
 
-        setConnection(newConnection);
+      setConnection(connectionInstance);
 
-        newConnection.start()
-          .then(() => {
-            console.log('✅ SignalR Connected to:', hubUrl);
-            setIsConnected(true);
-            
-            // Listen for log messages
-            newConnection.on('LogMessage', (logEntry) => {
-              console.log('📨 Received log message:', logEntry);
-              setLogs(prevLogs => [...prevLogs, {
-                ...logEntry,
-                timestamp: new Date().toISOString()
-              }]);
-            });
-
-            // Listen for scan status updates
-            newConnection.on('ScanStatusUpdate', (status) => {
-              console.log('📊 Scan status update:', status);
-            });
-          })
-          .catch(err => {
-            console.error('❌ SignalR Connection Error:', err);
-            console.error('❌ Failed to connect to:', hubUrl);
-            setIsConnected(false);
-            // Don't throw here, just log the error
+      connectionInstance.start()
+        .then(() => {
+          console.log('✅ SignalR Connected to LogHub');
+          setIsConnected(true);
+          
+          // Listen for log messages
+          connectionInstance.on('LogMessage', (logEntry) => {
+            console.log('📨 Received log message:', logEntry);
+            setLogs(prevLogs => [...prevLogs, {
+              ...logEntry,
+              timestamp: logEntry.Timestamp || new Date().toISOString()
+            }]);
           });
-      } catch (error) {
-        console.error('❌ Error setting up SignalR:', error);
-        setIsConnected(false);
-      }
-    }, 1000); // Wait 1 second before trying SignalR
+
+          // Listen for scan status updates
+          connectionInstance.on('ScanStatusUpdate', (status) => {
+            console.log('📊 Scan status update:', status);
+          });
+        })
+        .catch(err => {
+          console.error('❌ SignalR Connection Error:', err);
+          setIsConnected(false);
+        });
+    } catch (error) {
+      console.error('❌ Error setting up SignalR:', error);
+      setIsConnected(false);
+    }
 
     return () => {
-      clearTimeout(timer);
       console.log('🔌 Cleaning up SignalR connection...');
-      if (connection) {
-        connection.stop().catch(err => console.error('Error stopping SignalR:', err));
+      if (connectionInstance) {
+        connectionInstance.stop().catch(err => console.error('Error stopping SignalR:', err));
       }
     };
-  }, [connection]);
+  }, []); // Empty dependency array - only run once on mount
 
   const clearLogs = () => {
     setLogs([]);
