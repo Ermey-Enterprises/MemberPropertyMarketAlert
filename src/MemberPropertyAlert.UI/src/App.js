@@ -35,13 +35,24 @@ import Dashboard from './components/Dashboard';
 import ScanControl from './components/ScanControl';
 import LogViewer from './components/LogViewer';
 import InstitutionManager from './components/InstitutionManager';
+import ErrorBoundary from './components/ErrorBoundary';
+import config from './config/apiConfig';
 
-// Debug logging
 // Debug logging
 console.log('🚀 Member Property Alert UI - App.js loading');
 console.log('🔧 Environment:', process.env.NODE_ENV);
 console.log('🔧 React App API Base URL:', process.env.REACT_APP_API_BASE_URL);
 console.log('🔧 React App Environment:', process.env.REACT_APP_ENVIRONMENT);
+
+// Global error handler for unhandled promises
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('🚨 Unhandled Promise Rejection:', event.reason);
+});
+
+// Global error handler for JavaScript errors
+window.addEventListener('error', (event) => {
+  console.error('🚨 Global JavaScript Error:', event.error);
+});
 
 // Navigation component that uses hooks
 const NavigationContent = () => {
@@ -158,6 +169,8 @@ const ConnectionStatus = ({ isConnected }) => (
 
 // Main App Content
 const AppContent = () => {
+  console.log('🚀 AppContent component rendering...');
+  
   const [connection, setConnection] = useState(null);
   const [logs, setLogs] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -167,42 +180,61 @@ const AppContent = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    // Initialize SignalR connection for real-time logs
-    const newConnection = new HubConnectionBuilder()
-      .withUrl('/api/loghub')
-      .build();
-
-    setConnection(newConnection);
-
-    newConnection.start()
-      .then(() => {
-        console.log('SignalR Connected');
-        setIsConnected(true);
+    // Delay SignalR connection to allow the app to render first
+    const timer = setTimeout(() => {
+      console.log('🔌 Setting up SignalR connection...');
+      
+      try {
+        // Build the SignalR hub URL - it should point to the Function App, not the Web App
+        const hubUrl = `${config.apiBaseUrl}/loghub`;
+        console.log('🔗 SignalR Hub URL:', hubUrl);
         
-        // Listen for log messages
-        newConnection.on('LogMessage', (logEntry) => {
-          setLogs(prevLogs => [...prevLogs, {
-            ...logEntry,
-            timestamp: new Date().toISOString()
-          }]);
-        });
+        // Initialize SignalR connection for real-time logs
+        const newConnection = new HubConnectionBuilder()
+          .withUrl(hubUrl)
+          .build();
 
-        // Listen for scan status updates
-        newConnection.on('ScanStatusUpdate', (status) => {
-          console.log('Scan status update:', status);
-        });
-      })
-      .catch(err => {
-        console.error('SignalR Connection Error:', err);
+        setConnection(newConnection);
+
+        newConnection.start()
+          .then(() => {
+            console.log('✅ SignalR Connected to:', hubUrl);
+            setIsConnected(true);
+            
+            // Listen for log messages
+            newConnection.on('LogMessage', (logEntry) => {
+              console.log('📨 Received log message:', logEntry);
+              setLogs(prevLogs => [...prevLogs, {
+                ...logEntry,
+                timestamp: new Date().toISOString()
+              }]);
+            });
+
+            // Listen for scan status updates
+            newConnection.on('ScanStatusUpdate', (status) => {
+              console.log('📊 Scan status update:', status);
+            });
+          })
+          .catch(err => {
+            console.error('❌ SignalR Connection Error:', err);
+            console.error('❌ Failed to connect to:', hubUrl);
+            setIsConnected(false);
+            // Don't throw here, just log the error
+          });
+      } catch (error) {
+        console.error('❌ Error setting up SignalR:', error);
         setIsConnected(false);
-      });
+      }
+    }, 1000); // Wait 1 second before trying SignalR
 
     return () => {
-      if (newConnection) {
-        newConnection.stop();
+      clearTimeout(timer);
+      console.log('🔌 Cleaning up SignalR connection...');
+      if (connection) {
+        connection.stop().catch(err => console.error('Error stopping SignalR:', err));
       }
     };
-  }, []);
+  }, [connection]);
 
   const clearLogs = () => {
     setLogs([]);
@@ -264,26 +296,32 @@ const AppContent = () => {
             {/* Left Column - Main Content */}
             <Grid item xs={12} lg={8}>
               <Box sx={{ mb: 3 }}>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/institutions" element={<InstitutionManager />} />
-                </Routes>
+                <ErrorBoundary>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/institutions" element={<InstitutionManager />} />
+                  </Routes>
+                </ErrorBoundary>
               </Box>
               
               {/* Scan Controls */}
               <Paper elevation={2} sx={{ p: 3 }}>
-                <ScanControl connection={connection} />
+                <ErrorBoundary>
+                  <ScanControl connection={connection} />
+                </ErrorBoundary>
               </Paper>
             </Grid>
 
             {/* Right Column - Log Viewer */}
             <Grid item xs={12} lg={4}>
               <Paper elevation={2} sx={{ height: 'fit-content' }}>
-                <LogViewer 
-                  logs={logs} 
-                  onClearLogs={clearLogs}
-                  isConnected={isConnected}
-                />
+                <ErrorBoundary>
+                  <LogViewer 
+                    logs={logs} 
+                    onClearLogs={clearLogs}
+                    isConnected={isConnected}
+                  />
+                </ErrorBoundary>
               </Paper>
             </Grid>
           </Grid>
@@ -294,12 +332,18 @@ const AppContent = () => {
 };
 
 function App() {
+  console.log('🚀 App component rendering...');
+  
   return (
-    <CustomThemeProvider>
-      <Router>
-        <AppContent />
-      </Router>
-    </CustomThemeProvider>
+    <ErrorBoundary>
+      <CustomThemeProvider>
+        <Router>
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
+        </Router>
+      </CustomThemeProvider>
+    </ErrorBoundary>
   );
 }
 

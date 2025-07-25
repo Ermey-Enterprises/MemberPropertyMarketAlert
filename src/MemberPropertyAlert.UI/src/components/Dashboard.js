@@ -14,6 +14,7 @@ import {
   Chip,
   useTheme,
   alpha,
+  Alert,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -23,8 +24,11 @@ import {
   Circle as CircleIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import config from '../config/apiConfig';
 
 const Dashboard = () => {
+  console.log('🚀 Dashboard component rendering...');
+  
   const theme = useTheme();
   const [stats, setStats] = useState({
     totalInstitutions: 0,
@@ -33,6 +37,7 @@ const Dashboard = () => {
     recentMatches: 0
   });
   const [recentActivity, setRecentActivity] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -40,15 +45,23 @@ const Dashboard = () => {
 
   const loadDashboardData = async () => {
     try {
+      console.log('📊 Loading dashboard data...');
+      setError(null);
+      
       const [statsResponse, activityResponse] = await Promise.all([
-        axios.get('/api/dashboard/stats'),
-        axios.get('/api/dashboard/recent-activity')
+        axios.get(`${config.apiBaseUrl}/dashboard/stats`),
+        axios.get(`${config.apiBaseUrl}/dashboard/recent-activity`)
       ]);
+      
+      console.log('✅ Dashboard stats loaded:', statsResponse.data);
+      console.log('✅ Dashboard activity loaded:', activityResponse.data);
       
       setStats(statsResponse.data);
       setRecentActivity(activityResponse.data);
     } catch (error) {
-      console.error('Failed to load dashboard data:', error);
+      console.error('❌ Failed to load dashboard data:', error);
+      setError(error.message || 'Failed to load dashboard data');
+      // Don't throw, just log and set error state
     }
   };
 
@@ -107,6 +120,13 @@ const Dashboard = () => {
 
   return (
     <Box>
+      {/* Error Alert */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+      
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
