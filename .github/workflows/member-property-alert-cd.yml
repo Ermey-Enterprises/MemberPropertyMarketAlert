@@ -277,13 +277,15 @@ jobs:
           echo "📦 Preparing UI deployment package..."
           mkdir -p ./publish/ui
           
-          # Copy React build files
+          # Copy React build files to build subdirectory (server.js expects this structure)
           if [ -d "src/MemberPropertyAlert.UI/build" ]; then
-            echo "📁 Copying React build files..."
-            cp -r src/MemberPropertyAlert.UI/build/* ./publish/ui/
+            echo "📁 Copying React build files to build/ subdirectory..."
+            mkdir -p ./publish/ui/build
+            cp -r src/MemberPropertyAlert.UI/build/* ./publish/ui/build/
           elif [ -d "src/MemberPropertyAlert.UI/dist" ]; then
-            echo "📁 Copying React dist files..."
-            cp -r src/MemberPropertyAlert.UI/dist/* ./publish/ui/
+            echo "📁 Copying React dist files to build/ subdirectory..."
+            mkdir -p ./publish/ui/build
+            cp -r src/MemberPropertyAlert.UI/dist/* ./publish/ui/build/
           else
             echo "❌ React build output not found"
             exit 1
@@ -304,6 +306,8 @@ jobs:
           echo "✅ UI deployment package prepared with Express server and dependencies"
           echo "📋 Package contents:"
           ls -la ./publish/ui/
+          echo "📋 Build directory contents:"
+          ls -la ./publish/ui/build/ | head -10
           echo "📋 Node modules installed:"
           ls -la ./publish/ui/node_modules/ | head -10
       
