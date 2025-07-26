@@ -94,6 +94,7 @@ jobs:
             INFRA_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^infra/main\.bicep|^\.github/workflows/member-property-alert-cd\.yml' | wc -l)
             
             # Functions changes (Core and Functions projects)
+            # Updated 2025-01-26: Force Functions deployment for ScanController fix
             FUNCTIONS_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^src/MemberPropertyAlert\.(Core|Functions)/' | wc -l)
             
             # UI changes - broader detection including all UI project files
