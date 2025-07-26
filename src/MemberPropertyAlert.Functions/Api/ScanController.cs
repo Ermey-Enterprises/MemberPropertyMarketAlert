@@ -9,7 +9,7 @@ namespace MemberPropertyAlert.Functions.Api;
 
 /// <summary>
 /// ScanController - Handles all scan-related API endpoints for the UI
-/// Force deployment trigger - Updated at 2025-01-26 13:41
+/// Force deployment trigger - Updated at 2025-01-26 15:08 - Force functions-changed=true
 /// </summary>
 
 public class ScanController
