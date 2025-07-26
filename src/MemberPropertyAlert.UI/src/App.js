@@ -36,6 +36,7 @@ import ScanControl from './components/ScanControl';
 import LogViewer from './components/LogViewer';
 import InstitutionManager from './components/InstitutionManager';
 import ErrorBoundary from './components/ErrorBoundary';
+import config from './config/apiConfig';
 
 // Debug logging
 console.log('🚀 Member Property Alert UI - App.js loading');
@@ -179,14 +180,14 @@ const AppContent = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    // SignalR connection - connect to the Web App's LogHub (same origin)
-    console.log('🔌 Setting up SignalR connection to Web App LogHub...');
+    // SignalR connection - connect to the Function App's LogHub
+    console.log('🔌 Setting up SignalR connection to Function App LogHub...');
     
     let connectionInstance = null;
     
     try {
-      // Connect to the LogHub on the same Web App (no CORS needed)
-      const hubUrl = '/api/loghub'; // Relative URL - same origin as React app
+      // Connect to the Function App's SignalR hub
+      const hubUrl = `${config.apiBaseUrl}/loghub`;
       console.log('🔗 SignalR Hub URL:', hubUrl);
       
       // Initialize SignalR connection for real-time logs
@@ -198,7 +199,7 @@ const AppContent = () => {
 
       connectionInstance.start()
         .then(() => {
-          console.log('✅ SignalR Connected to LogHub');
+          console.log('✅ SignalR Connected to Function App LogHub');
           setIsConnected(true);
           
           // Listen for log messages
@@ -213,7 +214,26 @@ const AppContent = () => {
           // Listen for scan status updates
           connectionInstance.on('ScanStatusUpdate', (status) => {
             console.log('📊 Scan status update:', status);
+            // Add scan status as a log entry too
+            setLogs(prevLogs => [...prevLogs, {
+              Level: 'Info',
+              Message: `Scan Update: ${status.Status} - ${status.Data?.Message || 'Status changed'}`,
+              Source: 'ScanMonitor',
+              timestamp: new Date().toISOString()
+            }]);
           });
+
+          // Send a test message to verify connection
+          setTimeout(() => {
+            fetch(`${config.apiBaseUrl}/loghub/test`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            }).then(() => {
+              console.log('🧪 Test message sent to SignalR hub');
+            }).catch(err => {
+              console.warn('⚠️ Could not send test message:', err);
+            });
+          }, 2000);
         })
         .catch(err => {
           console.error('❌ SignalR Connection Error:', err);
