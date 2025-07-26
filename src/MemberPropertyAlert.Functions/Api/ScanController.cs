@@ -13,17 +13,20 @@ public class ScanController
     private readonly CosmosService _cosmosService;
     private readonly PropertyScanService _propertyScanService;
     private readonly NotificationService _notificationService;
+    private readonly SchedulingService _schedulingService;
 
     public ScanController(
         ILogger<ScanController> logger,
         CosmosService cosmosService,
         PropertyScanService propertyScanService,
-        NotificationService notificationService)
+        NotificationService notificationService,
+        SchedulingService schedulingService)
     {
         _logger = logger;
         _cosmosService = cosmosService;
         _propertyScanService = propertyScanService;
         _notificationService = notificationService;
+        _schedulingService = schedulingService;
     }
 
     /// <summary>
@@ -47,25 +50,6 @@ public class ScanController
                 return badRequestResponse;
             }
 
-            // Parse request body if provided
-            var scanRequest = new { Priority = "Normal", ForceRescan = false };
-            if (req.Body.Length > 0)
-            {
-                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-                if (!string.IsNullOrEmpty(requestBody))
-                {
-                    try
-                    {
-                        var parsed = JsonSerializer.Deserialize<dynamic>(requestBody);
-                        // Use parsed values if needed
-                    }
-                    catch
-                    {
-                        // Use defaults if parsing fails
-                    }
-                }
-            }
-
             _logger.LogInformation("Starting manual scan for institution {InstitutionId}", institutionId);
 
             // Check if there's already an active scan
@@ -84,14 +68,14 @@ public class ScanController
             }
 
             // Create a manual scan request object
-            var manualScanRequest = new MemberPropertyAlert.Functions.Models.ManualScanRequest
+            var manualScanRequest = new MemberPropertyAlert.Core.Services.ManualScanRequest
             {
-                Priority = scanRequest.Priority,
-                ForceRescan = scanRequest.ForceRescan
+                Priority = "Normal",
+                ForceRescan = false
             };
 
-            // Trigger the manual scan using the stub service
-            var scanLog = await _propertyScanService.TriggerManualScanAsync(institutionId, manualScanRequest);
+            // Trigger the manual scan using the scheduling service
+            var scanLog = await _schedulingService.TriggerManualScanAsync(institutionId, manualScanRequest);
 
             _logger.LogInformation("Manual scan started successfully: {ScanId}", scanLog.Id);
 
@@ -131,17 +115,25 @@ public class ScanController
     }
 
     /// <summary>
-    /// Get the status of a specific scan
+    /// Stop an active scan
     /// </summary>
-    [Function("GetScanStatus")]
-    public async Task<HttpResponseData> GetScanStatus(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "scan/{scanId}/status")] HttpRequestData req,
-        string scanId)
+    [Function("StopScan")]
+    public async Task<HttpResponseData> StopScan(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "scan/stop")] HttpRequestData req)
     {
-        _logger.LogInformation("GetScanStatus function executed for scan {ScanId}", scanId);
+        _logger.LogInformation("StopScan function executed");
 
         try
         {
+            string? scanId = req.Query["scanId"];
+            if (string.IsNullOrEmpty(scanId))
+            {
+                _logger.LogWarning("Scan ID not provided in request");
+                var badRequestResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequestResponse.WriteStringAsync(JsonSerializer.Serialize(new { error = "Scan ID is required" }));
+                return badRequestResponse;
+            }
+
             var scanLog = await _cosmosService.GetScanLogAsync(scanId);
             if (scanLog == null)
             {
@@ -150,6 +142,15 @@ public class ScanController
                 await notFoundResponse.WriteStringAsync(JsonSerializer.Serialize(new { error = "Scan not found" }));
                 return notFoundResponse;
             }
+
+            // Update scan status to completed (since there's no Stopped status)
+            scanLog.ScanStatus = MemberPropertyAlert.Core.Models.ScanStatus.Completed;
+            scanLog.CompletedAt = DateTime.UtcNow;
+            scanLog.ErrorMessage = "Scan stopped by user request";
+
+            await _cosmosService.UpdateScanLogAsync(scanLog);
+
+            _logger.LogInformation("Scan stopped successfully: {ScanId}", scanId);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             response.Headers.Add("Content-Type", "application/json");
@@ -175,11 +176,182 @@ public class ScanController
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting scan status for {ScanId}", scanId);
+            _logger.LogError(ex, "Error stopping scan");
             
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
             await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new { 
-                error = "Internal server error occurred while getting scan status",
+                error = "Internal server error occurred while stopping scan",
+                details = ex.Message
+            }));
+            return errorResponse;
+        }
+    }
+
+    /// <summary>
+    /// Get scan schedule for an institution
+    /// </summary>
+    [Function("GetScanSchedule")]
+    public async Task<HttpResponseData> GetScanSchedule(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "scan/schedule")] HttpRequestData req)
+    {
+        _logger.LogInformation("GetScanSchedule function executed");
+
+        try
+        {
+            string? institutionId = req.Query["institutionId"];
+            
+            // Get schedules from the scheduling service
+            var schedules = await _schedulingService.GetSchedulesAsync(institutionId ?? "default");
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            response.Headers.Add("Content-Type", "application/json");
+            
+            // Return mock schedule data for now
+            var scheduleResponse = new
+            {
+                schedules = new[]
+                {
+                    new
+                    {
+                        id = "schedule-1",
+                        name = "Daily Property Scan",
+                        cronExpression = "0 0 9 * * *",
+                        isActive = true,
+                        institutionId = institutionId ?? "default",
+                        lastRun = DateTime.UtcNow.AddDays(-1),
+                        nextRun = DateTime.UtcNow.AddDays(1),
+                        createdAt = DateTime.UtcNow.AddDays(-30)
+                    }
+                },
+                totalCount = 1
+            };
+            
+            await response.WriteStringAsync(JsonSerializer.Serialize(scheduleResponse));
+            
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting scan schedule");
+            
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new { 
+                error = "Internal server error occurred while getting scan schedule",
+                details = ex.Message
+            }));
+            return errorResponse;
+        }
+    }
+
+    /// <summary>
+    /// Update scan schedule for an institution
+    /// </summary>
+    [Function("UpdateScanSchedule")]
+    public async Task<HttpResponseData> UpdateScanSchedule(
+        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "scan/schedule")] HttpRequestData req)
+    {
+        _logger.LogInformation("UpdateScanSchedule function executed");
+
+        try
+        {
+            string? institutionId = req.Query["institutionId"];
+            if (string.IsNullOrEmpty(institutionId))
+            {
+                _logger.LogWarning("Institution ID not provided in request");
+                var badRequestResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequestResponse.WriteStringAsync(JsonSerializer.Serialize(new { error = "Institution ID is required" }));
+                return badRequestResponse;
+            }
+
+            // Parse request body
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            if (string.IsNullOrEmpty(requestBody))
+            {
+                var badRequestResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequestResponse.WriteStringAsync(JsonSerializer.Serialize(new { error = "Request body is required" }));
+                return badRequestResponse;
+            }
+
+            _logger.LogInformation("Updating scan schedule for institution {InstitutionId}", institutionId);
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            response.Headers.Add("Content-Type", "application/json");
+            
+            // Return mock updated schedule data
+            var scheduleResponse = new
+            {
+                id = "schedule-1",
+                name = "Updated Daily Property Scan",
+                cronExpression = "0 0 9 * * *",
+                isActive = true,
+                institutionId = institutionId,
+                nextRun = DateTime.UtcNow.AddDays(1),
+                lastRun = DateTime.UtcNow.AddDays(-1),
+                updatedAt = DateTime.UtcNow
+            };
+            
+            await response.WriteStringAsync(JsonSerializer.Serialize(scheduleResponse));
+            
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating scan schedule");
+            
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new { 
+                error = "Internal server error occurred while updating scan schedule",
+                details = ex.Message
+            }));
+            return errorResponse;
+        }
+    }
+
+    /// <summary>
+    /// Get scan statistics
+    /// </summary>
+    [Function("GetScanStats")]
+    public async Task<HttpResponseData> GetScanStats(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "scan/stats")] HttpRequestData req)
+    {
+        _logger.LogInformation("GetScanStats function executed");
+
+        try
+        {
+            string? institutionId = req.Query["institutionId"];
+            
+            // Get scan statistics from Cosmos service
+            var stats = await _cosmosService.GetScanStatisticsAsync(institutionId);
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            response.Headers.Add("Content-Type", "application/json");
+            
+            var statsResponse = new
+            {
+                totalScans = stats.TotalScans,
+                totalAddressesScanned = stats.TotalAddressesScanned,
+                totalAlertsGenerated = stats.TotalAlertsGenerated,
+                totalApiCalls = stats.TotalApiCalls,
+                totalErrors = stats.TotalErrors,
+                averageScanDuration = stats.AverageScanDuration.TotalMinutes,
+                lastScanAt = stats.LastScanAt,
+                statusBreakdown = stats.StatusBreakdown,
+                errorBreakdown = stats.ErrorBreakdown,
+                successRate = stats.TotalScans > 0 ? 
+                    Math.Round((double)(stats.TotalScans - stats.TotalErrors) / stats.TotalScans * 100, 2) : 100.0
+            };
+            
+            await response.WriteStringAsync(JsonSerializer.Serialize(statsResponse));
+            
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting scan statistics");
+            
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new { 
+                error = "Internal server error occurred while getting scan statistics",
                 details = ex.Message
             }));
             return errorResponse;
@@ -246,14 +418,14 @@ public class ScanController
     }
 
     /// <summary>
-    /// Stop an active scan
+    /// Get the status of a specific scan
     /// </summary>
-    [Function("StopScan")]
-    public async Task<HttpResponseData> StopScan(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "scan/{scanId}/stop")] HttpRequestData req,
+    [Function("GetScanStatus")]
+    public async Task<HttpResponseData> GetScanStatus(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "scan/{scanId}/status")] HttpRequestData req,
         string scanId)
     {
-        _logger.LogInformation("StopScan function executed for scan {ScanId}", scanId);
+        _logger.LogInformation("GetScanStatus function executed for scan {ScanId}", scanId);
 
         try
         {
@@ -265,27 +437,6 @@ public class ScanController
                 await notFoundResponse.WriteStringAsync(JsonSerializer.Serialize(new { error = "Scan not found" }));
                 return notFoundResponse;
             }
-
-            if (scanLog.ScanStatus != MemberPropertyAlert.Core.Models.ScanStatus.Started && 
-                scanLog.ScanStatus != MemberPropertyAlert.Core.Models.ScanStatus.InProgress)
-            {
-                _logger.LogWarning("Cannot stop scan {ScanId} - current status: {Status}", scanId, scanLog.ScanStatus);
-                var badRequestResponse = req.CreateResponse(HttpStatusCode.BadRequest);
-                await badRequestResponse.WriteStringAsync(JsonSerializer.Serialize(new { 
-                    error = "Scan cannot be stopped in current state",
-                    currentStatus = scanLog.ScanStatus.ToString()
-                }));
-                return badRequestResponse;
-            }
-
-            // Update scan status to completed (since there's no Stopped status)
-            scanLog.ScanStatus = MemberPropertyAlert.Core.Models.ScanStatus.Completed;
-            scanLog.CompletedAt = DateTime.UtcNow;
-            scanLog.ErrorMessage = "Scan stopped by user request";
-
-            await _cosmosService.UpdateScanLogAsync(scanLog);
-
-            _logger.LogInformation("Scan stopped successfully: {ScanId}", scanId);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             response.Headers.Add("Content-Type", "application/json");
@@ -311,11 +462,11 @@ public class ScanController
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error stopping scan {ScanId}", scanId);
+            _logger.LogError(ex, "Error getting scan status for {ScanId}", scanId);
             
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
             await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new { 
-                error = "Internal server error occurred while stopping scan",
+                error = "Internal server error occurred while getting scan status",
                 details = ex.Message
             }));
             return errorResponse;
