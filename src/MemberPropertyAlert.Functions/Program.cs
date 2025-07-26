@@ -163,9 +163,15 @@ static void ConfigureRentCastService(IServiceCollection services, IConfiguration
         client.DefaultRequestHeaders.Add("User-Agent", "MemberPropertyAlert/1.0.2");
     });
 
-    // Register the service
-    services.AddScoped<IRentCastService, EnhancedRentCastService>();
-}
+        // Register the service
+        services.AddScoped<IRentCastService, EnhancedRentCastService>();
+
+        // Register stub services for development
+        services.AddScoped<CosmosService>();
+        services.AddScoped<PropertyScanService>();
+        services.AddScoped<NotificationService>();
+        services.AddScoped<SchedulingService>();
+    }
 
 static void ConfigureHealthChecks(IServiceCollection services, IConfiguration configuration)
 {
