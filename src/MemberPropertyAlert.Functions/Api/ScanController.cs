@@ -39,7 +39,7 @@ public class ScanController
     /// </summary>
     [Function("StartManualScan")]
     public async Task<HttpResponseData> StartManualScan(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "scan/start")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "scan/start")] HttpRequestData req)
     {
         _logger.LogInformation("StartManualScan function executed");
 
