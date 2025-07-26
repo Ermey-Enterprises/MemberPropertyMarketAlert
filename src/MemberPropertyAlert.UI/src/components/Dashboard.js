@@ -15,6 +15,8 @@ import {
   useTheme,
   alpha,
   Alert,
+  Button,
+  Collapse,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -25,6 +27,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import config from '../config/apiConfig';
+import { debugApiConnectivity, testUrlPatterns } from '../utils/apiDebugger';
 
 const Dashboard = () => {
   console.log('🚀 Dashboard component rendering...');
@@ -38,6 +41,9 @@ const Dashboard = () => {
   });
   const [recentActivity, setRecentActivity] = useState([]);
   const [error, setError] = useState(null);
+  const [debugResults, setDebugResults] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [isDebugging, setIsDebugging] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -46,22 +52,76 @@ const Dashboard = () => {
   const loadDashboardData = async () => {
     try {
       console.log('📊 Loading dashboard data...');
+      console.log('📊 API Base URL:', config.apiBaseUrl);
       setError(null);
       
-      const [statsResponse, activityResponse] = await Promise.all([
-        axios.get(`${config.apiBaseUrl}/dashboard/stats`),
-        axios.get(`${config.apiBaseUrl}/dashboard/recent-activity`)
-      ]);
+      const statsUrl = `${config.apiBaseUrl}/dashboard/stats`;
+      const activityUrl = `${config.apiBaseUrl}/dashboard/recent-activity`;
       
-      console.log('✅ Dashboard stats loaded:', statsResponse.data);
-      console.log('✅ Dashboard activity loaded:', activityResponse.data);
+      console.log('📊 Stats URL:', statsUrl);
+      console.log('📊 Activity URL:', activityUrl);
       
-      setStats(statsResponse.data);
-      setRecentActivity(activityResponse.data);
+      // Load stats and activity separately to better identify which one fails
+      let statsData = null;
+      let activityData = [];
+      
+      try {
+        console.log('📊 Fetching stats...');
+        const statsResponse = await axios.get(statsUrl, {
+          timeout: 10000,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        statsData = statsResponse.data;
+        console.log('✅ Dashboard stats loaded:', statsData);
+      } catch (statsError) {
+        console.error('❌ Failed to load stats:', statsError);
+        console.error('❌ Stats error details:', {
+          message: statsError.message,
+          status: statsError.response?.status,
+          statusText: statsError.response?.statusText,
+          url: statsUrl
+        });
+        // Use default stats if API fails
+        statsData = {
+          totalInstitutions: 0,
+          totalProperties: 0,
+          activeAlerts: 0,
+          recentMatches: 0
+        };
+      }
+      
+      try {
+        console.log('📊 Fetching recent activity...');
+        const activityResponse = await axios.get(activityUrl, {
+          timeout: 10000,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        activityData = activityResponse.data;
+        console.log('✅ Dashboard activity loaded:', activityData);
+      } catch (activityError) {
+        console.error('❌ Failed to load recent activity:', activityError);
+        console.error('❌ Activity error details:', {
+          message: activityError.message,
+          status: activityError.response?.status,
+          statusText: activityError.response?.statusText,
+          url: activityUrl
+        });
+        // Use empty array if API fails
+        activityData = [];
+      }
+      
+      setStats(statsData);
+      setRecentActivity(activityData);
+      
     } catch (error) {
-      console.error('❌ Failed to load dashboard data:', error);
-      setError(error.message || 'Failed to load dashboard data');
-      // Don't throw, just log and set error state
+      console.error('❌ Unexpected error in loadDashboardData:', error);
+      setError(`Failed to load dashboard data: ${error.message}`);
     }
   };
 
@@ -115,6 +175,27 @@ const Dashboard = () => {
         return 'primary';
       default:
         return 'default';
+    }
+  };
+
+  const handleDebugApi = async () => {
+    setIsDebugging(true);
+    try {
+      console.log('🔍 Running API debug tests...');
+      testUrlPatterns(); // Log URL pattern tests
+      const results = await debugApiConnectivity();
+      setDebugResults(results);
+      setShowDebug(true);
+    } catch (error) {
+      console.error('❌ Debug test failed:', error);
+      setDebugResults({
+        baseUrl: config.apiBaseUrl,
+        error: error.message,
+        tests: []
+      });
+      setShowDebug(true);
+    } finally {
+      setIsDebugging(false);
     }
   };
 
@@ -263,6 +344,96 @@ const Dashboard = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Debug Section */}
+      <Box sx={{ mt: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={handleDebugApi}
+            disabled={isDebugging}
+            size="small"
+          >
+            {isDebugging ? 'Running Debug Tests...' : 'Debug API Connectivity'}
+          </Button>
+          {debugResults && (
+            <Button
+              variant="text"
+              onClick={() => setShowDebug(!showDebug)}
+              size="small"
+            >
+              {showDebug ? 'Hide Debug Results' : 'Show Debug Results'}
+            </Button>
+          )}
+        </Box>
+
+        <Collapse in={showDebug}>
+          {debugResults && (
+            <Card elevation={1} sx={{ bgcolor: alpha(theme.palette.info.main, 0.05) }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  API Debug Results
+                </Typography>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Base URL: {debugResults.baseUrl}
+                </Typography>
+                
+                {debugResults.error && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    Debug Error: {debugResults.error}
+                  </Alert>
+                )}
+
+                <List dense>
+                  {debugResults.tests.map((test, index) => (
+                    <ListItem key={index} sx={{ px: 0 }}>
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2" fontWeight="medium">
+                              {test.name}
+                            </Typography>
+                            <Chip
+                              label={test.ok ? 'SUCCESS' : test.error ? 'ERROR' : `${test.status}`}
+                              size="small"
+                              color={test.ok ? 'success' : 'error'}
+                              variant="outlined"
+                            />
+                            {test.responseTime && (
+                              <Chip
+                                label={`${test.responseTime}ms`}
+                                size="small"
+                                variant="outlined"
+                              />
+                            )}
+                          </Box>
+                        }
+                        secondary={
+                          <Box sx={{ mt: 1 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              URL: {test.url}
+                            </Typography>
+                            {test.error && (
+                              <Typography variant="caption" color="error.main" display="block">
+                                Error: {test.error}
+                              </Typography>
+                            )}
+                            {test.statusText && !test.ok && (
+                              <Typography variant="caption" color="error.main" display="block">
+                                Status: {test.status} {test.statusText}
+                              </Typography>
+                            )}
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </CardContent>
+            </Card>
+          )}
+        </Collapse>
+      </Box>
     </Box>
   );
 };
