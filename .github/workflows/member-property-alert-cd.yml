@@ -515,7 +515,7 @@ jobs:
   deploy-function-app:
     runs-on: ubuntu-latest
     needs: [analyze-changes, build-and-test, deploy-infrastructure]
-    if: needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.functions-changed == 'true' && needs.analyze-changes.outputs.deploy-function-app == 'true'
+    if: always() && needs.build-and-test.result == 'success' && needs.analyze-changes.outputs.functions-changed == 'true' && needs.analyze-changes.outputs.deploy-function-app == 'true' && (needs.deploy-infrastructure.result == 'success' || needs.deploy-infrastructure.result == 'skipped')
     steps:
       - name: Initialize Function App deployment
         run: |
