@@ -542,7 +542,25 @@ jobs:
             APP_SERVICE_NAME="${{ needs.deploy-infrastructure.outputs.function-app-name }}"
           else
             ENV="${{ needs.analyze-changes.outputs.deploy-environment }}"
-            APP_SERVICE_NAME="func-mpa-${ENV}-eus2-$(echo '${{ needs.analyze-changes.outputs.resource-group-name }}' | cut -d'-' -f6)"
+            RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
+            
+            echo "🔍 Infrastructure output not available, discovering existing function app..."
+            echo "  Environment: $ENV"
+            echo "  Resource Group: $RG_NAME"
+            
+            # Try to find existing function app in the resource group
+            EXISTING_FUNC_APPS=$(az functionapp list --resource-group "$RG_NAME" --query "[?contains(name, 'func-mpa-${ENV}')].name" -o tsv 2>/dev/null || echo "")
+            
+            if [ -n "$EXISTING_FUNC_APPS" ]; then
+              APP_SERVICE_NAME=$(echo "$EXISTING_FUNC_APPS" | head -n1)
+              echo "✅ Found existing function app: $APP_SERVICE_NAME"
+            else
+              # Fallback to expected naming convention with generated suffix
+              echo "🎯 Using expected naming convention with generated suffix..."
+              SUFFIX=$(openssl rand -hex 2)
+              APP_SERVICE_NAME="func-mpa-${ENV}-eus2-${SUFFIX}"
+              echo "⚠️ Generated name: $APP_SERVICE_NAME (may not exist)"
+            fi
           fi
           
           RG_NAME="${{ needs.analyze-changes.outputs.resource-group-name }}"
