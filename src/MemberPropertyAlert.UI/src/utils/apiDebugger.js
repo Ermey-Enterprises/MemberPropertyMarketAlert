@@ -125,7 +125,7 @@ export const testUrlPatterns = () => {
       const apiUrl = `https://${functionAppUrl}/api`;
       console.log(`   → Function App URL: ${apiUrl}`);
     } else if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
-      const [host, port] = hostname.split(':');
+      const [host] = hostname.split(':');
       const functionPort = '7071';
       const apiUrl = `http://${host}:${functionPort}/api`;
       console.log(`   → Local Function App URL: ${apiUrl}`);
