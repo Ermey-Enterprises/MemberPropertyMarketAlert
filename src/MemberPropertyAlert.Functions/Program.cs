@@ -11,6 +11,7 @@ using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Abstractions;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Configurations;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
 using Microsoft.OpenApi.Models;
+using MemberPropertyAlert.Functions.Services;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -25,6 +26,12 @@ var host = new HostBuilder()
 
         // Application Insights
         services.AddApplicationInsightsTelemetryWorkerService();
+
+        // SignalR Service
+        services.AddSignalR();
+        
+        // HTTP Client for internal SignalR calls
+        services.AddHttpClient<SignalRService>();
 
         // OpenAPI/Swagger Configuration
         services.AddSingleton<IOpenApiConfigurationOptions>(_ =>

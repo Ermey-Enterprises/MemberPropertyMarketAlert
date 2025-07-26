@@ -252,6 +252,13 @@ jobs:
           npm test -- --ci --coverage --maxWorkers=2 --passWithNoTests --watchAll=false --verbose
           
           echo "📦 Building production bundle..."
+          # Set environment variables for React build
+          export REACT_APP_API_BASE_URL="https://func-mpa-${{ needs.analyze-changes.outputs.deploy-environment }}-eus2-6ih6.azurewebsites.net/api"
+          export REACT_APP_ENVIRONMENT="${{ needs.analyze-changes.outputs.deploy-environment }}"
+          echo "🔧 Build environment variables:"
+          echo "  REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL"
+          echo "  REACT_APP_ENVIRONMENT=$REACT_APP_ENVIRONMENT"
+          
           npm run build --verbose
           
           echo "✅ React build completed successfully"

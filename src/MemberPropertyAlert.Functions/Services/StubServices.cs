@@ -243,18 +243,21 @@ namespace MemberPropertyAlert.Functions.Services
         }
     }
 
-    // Stub implementation for SignalRService
+    // SignalR service implementation that calls the Function App SignalR endpoints
     public class SignalRService : ISignalRService
     {
         private readonly ILogger<SignalRService> _logger;
         private readonly SignalRConfiguration _config;
+        private readonly HttpClient _httpClient;
 
         public SignalRService(
             ILogger<SignalRService> logger,
-            IOptions<SignalRConfiguration> config)
+            IOptions<SignalRConfiguration> config,
+            HttpClient httpClient)
         {
             _logger = logger;
             _config = config.Value;
+            _httpClient = httpClient;
         }
 
         public async Task SendScanUpdateAsync(string institutionId, ScanUpdateMessage message)
@@ -262,8 +265,42 @@ namespace MemberPropertyAlert.Functions.Services
             _logger.LogInformation("Sending scan update to institution {InstitutionId}: {Message}", 
                 institutionId, message.Message);
             
-            // TODO: Implement SignalR message sending
-            await Task.Delay(10);
+            try
+            {
+                var scanStatusRequest = new
+                {
+                    Status = message.Status.ToString(),
+                    Data = new { 
+                        Message = message.Message,
+                        AddressesScanned = message.AddressesScanned,
+                        TotalAddresses = message.TotalAddresses,
+                        AlertsGenerated = message.AlertsGenerated,
+                        CurrentAddress = message.CurrentAddress,
+                        ScanData = message.Data 
+                    },
+                    InstitutionId = institutionId,
+                    Progress = message.TotalAddresses > 0 ? (message.AddressesScanned * 100 / message.TotalAddresses) : 0
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(scanStatusRequest);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                
+                // Call the Function App SignalR endpoint (internal call)
+                var response = await _httpClient.PostAsync("/api/loghub/scan-status", content);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("Scan update sent successfully via SignalR");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send scan update via SignalR: {StatusCode}", response.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending scan update via SignalR");
+            }
         }
 
         public async Task SendAlertNotificationAsync(string institutionId, PropertyAlert alert)
@@ -271,8 +308,35 @@ namespace MemberPropertyAlert.Functions.Services
             _logger.LogInformation("Sending alert notification to institution {InstitutionId} for alert {AlertId}", 
                 institutionId, alert.Id);
             
-            // TODO: Implement SignalR alert notification
-            await Task.Delay(10);
+            try
+            {
+                var logMessage = new
+                {
+                    Level = "Warning",
+                    Message = $"New property alert: {alert.FullAddress} for institution {alert.InstitutionId}",
+                    Source = "PropertyScanner",
+                    Category = "Alert"
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(logMessage);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                
+                // Call the Function App SignalR endpoint (internal call)
+                var response = await _httpClient.PostAsync("/api/loghub/send", content);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("Alert notification sent successfully via SignalR");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send alert notification via SignalR: {StatusCode}", response.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending alert notification via SignalR");
+            }
         }
 
         public async Task SendSystemStatusAsync(SystemStatusMessage message)
@@ -280,8 +344,35 @@ namespace MemberPropertyAlert.Functions.Services
             _logger.LogInformation("Sending system status: {Component} - {Status}", 
                 message.Component, message.Status);
             
-            // TODO: Implement SignalR system status broadcast
-            await Task.Delay(10);
+            try
+            {
+                var logMessage = new
+                {
+                    Level = message.Status == SystemHealthStatus.Critical ? "Error" : "Info",
+                    Message = $"System Status - {message.Component}: {message.Status} - {message.Message}",
+                    Source = "SystemMonitor",
+                    Category = "System"
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(logMessage);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                
+                // Call the Function App SignalR endpoint (internal call)
+                var response = await _httpClient.PostAsync("/api/loghub/send", content);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("System status sent successfully via SignalR");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send system status via SignalR: {StatusCode}", response.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending system status via SignalR");
+            }
         }
 
         public async Task JoinInstitutionGroupAsync(string connectionId, string institutionId)
@@ -289,8 +380,9 @@ namespace MemberPropertyAlert.Functions.Services
             _logger.LogDebug("Adding connection {ConnectionId} to institution group {InstitutionId}", 
                 connectionId, institutionId);
             
-            // TODO: Implement SignalR group management
-            await Task.Delay(5);
+            // Note: Group management would require a more complex SignalR setup
+            // For now, we'll just log this operation
+            await Task.CompletedTask;
         }
 
         public async Task LeaveInstitutionGroupAsync(string connectionId, string institutionId)
@@ -298,8 +390,9 @@ namespace MemberPropertyAlert.Functions.Services
             _logger.LogDebug("Removing connection {ConnectionId} from institution group {InstitutionId}", 
                 connectionId, institutionId);
             
-            // TODO: Implement SignalR group management
-            await Task.Delay(5);
+            // Note: Group management would require a more complex SignalR setup
+            // For now, we'll just log this operation
+            await Task.CompletedTask;
         }
     }
 
