@@ -810,6 +810,7 @@ jobs:
           if [ "${{ needs.deploy-infrastructure.outputs.web-app-name }}" != "" ]; then
             echo "  ✅ Web App: ${{ needs.deploy-infrastructure.outputs.web-app-name }}"
             echo "     URL: ${{ needs.deploy-infrastructure.outputs.web-app-url }}"
+            echo "     🔧 Admin Page: ${{ needs.deploy-infrastructure.outputs.web-app-url }}/admin"
           fi
           if [ "${{ needs.deploy-infrastructure.outputs.key-vault-name }}" != "" ]; then
             echo "  🔐 Key Vault: ${{ needs.deploy-infrastructure.outputs.key-vault-name }}"
