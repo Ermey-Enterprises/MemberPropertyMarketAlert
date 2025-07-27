@@ -38,7 +38,7 @@ name: guid(keyVault.id, functionApp.identity.principalId, '4633458b-17de-408a-b8
 
 **After (Fixed):**
 ```bicep
-name: guid(keyVault.id, resourceNames.functionApp, 'KeyVaultSecretsUser')
+name: guid(keyVault.id, resourceNames.functionApp, 'KeyVaultSecretsUser', uniqueSuffix)
 ```
 
 ### 2. **Consistent Naming Strategy**
@@ -52,6 +52,13 @@ Ensured all GUID generation uses only values available at deployment compilation
 - Resource IDs (available at compile time)
 - Resource names (compile-time constants)
 - Role type identifiers (static strings)
+- Unique suffix for deployment isolation
+
+### 4. **Existing Role Assignment Handling**
+Added `uniqueSuffix` to role assignment names to prevent conflicts with existing deployments:
+- Each deployment gets unique role assignment identifiers
+- Prevents "RoleAssignmentExists" errors
+- Enables clean redeployments without manual cleanup
 
 ## Technical Details
 

@@ -713,9 +713,9 @@ resource azureSubscriptionIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01
 }
 
 // RBAC Role Assignments for Key Vault access
-// Use only compile-time available values for GUID generation
+// Use only compile-time available values for GUID generation with existing resource handling
 resource functionAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
-  name: guid(keyVault.id, resourceNames.functionApp, 'KeyVaultSecretsUser')
+  name: guid(keyVault.id, resourceNames.functionApp, 'KeyVaultSecretsUser', uniqueSuffix)
   scope: keyVault
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
@@ -725,7 +725,7 @@ resource functionAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022
 }
 
 resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
-  name: guid(keyVault.id, resourceNames.webApp, 'KeyVaultSecretsUser')
+  name: guid(keyVault.id, resourceNames.webApp, 'KeyVaultSecretsUser', uniqueSuffix)
   scope: keyVault
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
@@ -736,7 +736,7 @@ resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-0
 
 // RBAC Role Assignments for Storage Account access with managed identity
 resource functionAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
-  name: guid(storageAccount.id, resourceNames.functionApp, 'StorageBlobDataContributor')
+  name: guid(storageAccount.id, resourceNames.functionApp, 'StorageBlobDataContributor', uniqueSuffix)
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
@@ -746,7 +746,7 @@ resource functionAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2
 }
 
 resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
-  name: guid(storageAccount.id, resourceNames.functionApp, 'StorageFileDataContributor')
+  name: guid(storageAccount.id, resourceNames.functionApp, 'StorageFileDataContributor', uniqueSuffix)
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb') // Storage File Data SMB Share Contributor
@@ -756,7 +756,7 @@ resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2
 }
 
 resource webAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
-  name: guid(storageAccount.id, resourceNames.webApp, 'StorageBlobDataContributor')
+  name: guid(storageAccount.id, resourceNames.webApp, 'StorageBlobDataContributor', uniqueSuffix)
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
@@ -768,7 +768,7 @@ resource webAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-0
 // Cosmos DB Role Assignment with unique naming to prevent conflicts
 resource functionAppCosmosDbAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = if (deployFunctionApp) {
   parent: cosmosDbAccount
-  name: guid(cosmosDbAccount.id, resourceNames.functionApp, 'CosmosDataContributor')
+  name: guid(cosmosDbAccount.id, resourceNames.functionApp, 'CosmosDataContributor', uniqueSuffix)
   properties: {
     roleDefinitionId: '${cosmosDbAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
     principalId: functionApp.identity.principalId
