@@ -719,4 +719,227 @@ namespace MemberPropertyAlert.Functions.Services
             _logger.LogInformation("Scheduled scan service stopped");
         }
     }
+
+    // Stub implementation for CosmosService
+    public class CosmosService : ICosmosService
+    {
+        private readonly ILogger<CosmosService> _logger;
+
+        public CosmosService(ILogger<CosmosService> logger)
+        {
+            _logger = logger;
+        }
+
+        public async Task InitializeDatabaseAsync()
+        {
+            _logger.LogInformation("Initializing database");
+            await Task.Delay(100);
+        }
+
+        public async Task<Institution> CreateInstitutionAsync(Institution institution)
+        {
+            _logger.LogInformation("Creating institution {InstitutionId}", institution.Id);
+            institution.Id = Guid.NewGuid().ToString();
+            await Task.Delay(50);
+            return institution;
+        }
+
+        public async Task<Institution?> GetInstitutionAsync(string institutionId)
+        {
+            _logger.LogInformation("Getting institution {InstitutionId}", institutionId);
+            await Task.Delay(25);
+            return null;
+        }
+
+        public async Task<Institution> UpdateInstitutionAsync(Institution institution)
+        {
+            _logger.LogInformation("Updating institution {InstitutionId}", institution.Id);
+            await Task.Delay(50);
+            return institution;
+        }
+
+        public async Task DeleteInstitutionAsync(string institutionId)
+        {
+            _logger.LogInformation("Deleting institution {InstitutionId}", institutionId);
+            await Task.Delay(25);
+        }
+
+        public async Task<List<Institution>> GetAllInstitutionsAsync()
+        {
+            _logger.LogInformation("Getting all institutions");
+            await Task.Delay(50);
+            return new List<Institution>();
+        }
+
+        public async Task<MemberAddress> CreateAddressAsync(MemberAddress address)
+        {
+            _logger.LogInformation("Creating address {AddressId}", address.Id);
+            address.Id = Guid.NewGuid().ToString();
+            await Task.Delay(50);
+            return address;
+        }
+
+        public async Task<MemberAddress?> GetAddressAsync(string addressId)
+        {
+            _logger.LogInformation("Getting address {AddressId}", addressId);
+            await Task.Delay(25);
+            return null;
+        }
+
+        public async Task<MemberAddress> UpdateAddressAsync(MemberAddress address)
+        {
+            _logger.LogInformation("Updating address {AddressId}", address.Id);
+            await Task.Delay(50);
+            return address;
+        }
+
+        public async Task DeleteAddressAsync(string addressId)
+        {
+            _logger.LogInformation("Deleting address {AddressId}", addressId);
+            await Task.Delay(25);
+        }
+
+        public async Task<List<MemberAddress>> GetAddressesByInstitutionAsync(string institutionId)
+        {
+            _logger.LogInformation("Getting addresses for institution {InstitutionId}", institutionId);
+            await Task.Delay(50);
+            return new List<MemberAddress>();
+        }
+
+        public async Task<List<MemberAddress>> GetActiveAddressesAsync()
+        {
+            _logger.LogInformation("Getting active addresses");
+            await Task.Delay(50);
+            return new List<MemberAddress>();
+        }
+
+        public async Task<List<MemberAddress>> GetAddressesByFilterAsync(string institutionId, string? priority = null, bool? isActive = null)
+        {
+            _logger.LogInformation("Getting addresses by filter for institution {InstitutionId}", institutionId);
+            await Task.Delay(50);
+            return new List<MemberAddress>();
+        }
+
+        public async Task<List<MemberAddress>> CreateBulkAddressesAsync(List<MemberAddress> addresses)
+        {
+            _logger.LogInformation("Creating {Count} addresses in bulk", addresses.Count);
+            foreach (var address in addresses)
+            {
+                address.Id = Guid.NewGuid().ToString();
+            }
+            await Task.Delay(100);
+            return addresses;
+        }
+
+        public async Task<PropertyAlert> CreateAlertAsync(PropertyAlert alert)
+        {
+            _logger.LogInformation("Creating alert for address {AddressId}", alert.AddressId);
+            alert.Id = Guid.NewGuid().ToString();
+            await Task.Delay(50);
+            return alert;
+        }
+
+        public async Task<PropertyAlert?> GetAlertAsync(string alertId)
+        {
+            _logger.LogInformation("Getting alert {AlertId}", alertId);
+            await Task.Delay(25);
+            return null;
+        }
+
+        public async Task<PropertyAlert> UpdateAlertAsync(PropertyAlert alert)
+        {
+            _logger.LogInformation("Updating alert {AlertId}", alert.Id);
+            await Task.Delay(50);
+            return alert;
+        }
+
+        public async Task<List<PropertyAlert>> GetAlertsByInstitutionAsync(string institutionId, int? limit = null)
+        {
+            _logger.LogInformation("Getting alerts for institution {InstitutionId} (limit: {Limit})", institutionId, limit);
+            await Task.Delay(50);
+            return new List<PropertyAlert>();
+        }
+
+        public async Task<List<PropertyAlert>> GetPendingAlertsAsync()
+        {
+            _logger.LogInformation("Getting pending alerts");
+            await Task.Delay(50);
+            return new List<PropertyAlert>();
+        }
+
+        public async Task<List<PropertyAlert>> GetAlertsByStatusAsync(AlertStatus status)
+        {
+            _logger.LogInformation("Getting alerts by status {Status}", status);
+            await Task.Delay(50);
+            return new List<PropertyAlert>();
+        }
+
+        public async Task<ScanLog> CreateScanLogAsync(ScanLog scanLog)
+        {
+            _logger.LogInformation("Creating scan log for institution {InstitutionId}", scanLog.InstitutionId);
+            scanLog.Id = Guid.NewGuid().ToString();
+            await Task.Delay(50);
+            return scanLog;
+        }
+
+        public async Task<ScanLog?> GetScanLogAsync(string scanLogId)
+        {
+            _logger.LogInformation("Getting scan log {ScanLogId}", scanLogId);
+            await Task.Delay(25);
+            return null;
+        }
+
+        public async Task<ScanLog> UpdateScanLogAsync(ScanLog scanLog)
+        {
+            _logger.LogInformation("Updating scan log {ScanLogId}", scanLog.Id);
+            await Task.Delay(50);
+            return scanLog;
+        }
+
+        public async Task<List<ScanLog>> GetScanLogsByInstitutionAsync(string institutionId, int? limit = null)
+        {
+            _logger.LogInformation("Getting scan logs for institution {InstitutionId} (limit: {Limit})", institutionId, limit);
+            await Task.Delay(50);
+            return new List<ScanLog>();
+        }
+
+        public async Task<List<ScanLog>> GetRecentScanLogsAsync(int limit = 50)
+        {
+            _logger.LogInformation("Getting recent scan logs (limit: {Limit})", limit);
+            await Task.Delay(50);
+            return new List<ScanLog>();
+        }
+
+        public async Task<ScanLog?> GetActiveScanLogAsync(string? institutionId = null)
+        {
+            _logger.LogInformation("Getting active scan log for institution {InstitutionId}", institutionId ?? "all");
+            await Task.Delay(25);
+            return null;
+        }
+
+        public async Task<ScanStatistics> GetScanStatisticsAsync(string? institutionId = null, DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            _logger.LogInformation("Getting scan statistics for institution {InstitutionId}", institutionId ?? "all");
+            await Task.Delay(100);
+            return new ScanStatistics
+            {
+                TotalScans = 0,
+                TotalAddressesScanned = 0,
+                TotalAlertsGenerated = 0,
+                TotalApiCalls = 0,
+                TotalErrors = 0,
+                AverageScanDuration = TimeSpan.Zero,
+                LastScanAt = null,
+                StatusBreakdown = new Dictionary<string, int>(),
+                ErrorBreakdown = new Dictionary<string, int>()
+            };
+        }
+
+        public async Task<List<AlertSummary>> GetAlertSummaryAsync(string? institutionId = null, DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            _logger.LogInformation("Getting alert summary for institution {InstitutionId}", institutionId ?? "all");
+            await Task.Delay(100);
+            return new List<AlertSummary>();
+        }
+    }
 }
