@@ -39,6 +39,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import config from './config/apiConfig';
 
 // Debug logging
+// Force deployment trigger - Updated at 2025-01-27 17:17
 console.log('🚀 Member Property Alert UI - App.js loading');
 console.log('🔧 Environment:', process.env.NODE_ENV);
 console.log('🔧 React App API Base URL:', process.env.REACT_APP_API_BASE_URL);
