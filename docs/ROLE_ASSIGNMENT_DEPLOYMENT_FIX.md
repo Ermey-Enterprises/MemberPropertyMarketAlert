@@ -54,11 +54,24 @@ Ensured all GUID generation uses only values available at deployment compilation
 - Role type identifiers (static strings)
 - Unique suffix for deployment isolation
 
-### 4. **Existing Role Assignment Handling**
-Added `uniqueSuffix` to role assignment names to prevent conflicts with existing deployments:
-- Each deployment gets unique role assignment identifiers
-- Prevents "RoleAssignmentExists" errors
+### 4. **Deployment Timestamp for Guaranteed Uniqueness**
+Replaced `uniqueSuffix` with `deploymentTimestamp` using `utcNow()` for truly unique role assignment names:
+- Each deployment gets completely unique identifiers based on execution time
+- Prevents "RoleAssignmentExists" errors across all deployment scenarios
 - Enables clean redeployments without manual cleanup
+- Guarantees no conflicts even with rapid successive deployments
+
+**Implementation:**
+```bicep
+@description('Deployment timestamp for unique resource naming (auto-generated)')
+param deploymentTimestamp string = utcNow('yyyyMMddHHmmss')
+
+// Role assignment with timestamp-based uniqueness
+resource functionAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+  name: guid(keyVault.id, resourceNames.functionApp, 'KeyVaultSecretsUser', deploymentTimestamp)
+  // ... rest of configuration
+}
+```
 
 ## Technical Details
 
