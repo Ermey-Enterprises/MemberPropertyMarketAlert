@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Administrator Console · Member Property Market Alert</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="layout">
+    <header class="hero">
+      <a class="back" href="/" data-testid="back-link">← Back</a>
+      <h1>Administrator Console</h1>
+      <p class="tagline">Track tenant onboarding, address coverage, and webhook readiness.</p>
+      <div class="status-pill" data-testid="admin-health">Loading…</div>
+    </header>
+
+    <section class="controls">
+      <label class="control">
+        <span>Search tenants</span>
+        <input id="searchInput" type="search" placeholder="Search by institution…" data-testid="search-input" />
+      </label>
+      <label class="control checkbox">
+        <input id="webhookFilter" type="checkbox" data-testid="webhook-filter" />
+        <span>Webhook configured only</span>
+      </label>
+      <span class="meta" data-testid="institution-count">0 institutions</span>
+    </section>
+
+    <table class="table" data-testid="institution-table">
+      <thead>
+        <tr>
+          <th scope="col">Institution</th>
+          <th scope="col">Tenant ID</th>
+          <th scope="col">Active Members</th>
+          <th scope="col">Addresses</th>
+          <th scope="col">Webhook</th>
+        </tr>
+      </thead>
+      <tbody id="institutionTableBody">
+        <tr data-row="institution" data-testid="institution-row" data-name="Northwind University" data-tenant="northwind-university" data-webhook="true">
+          <th scope="row" data-testid="institution-name">Northwind University</th>
+          <td data-testid="institution-tenant">northwind-university</td>
+          <td data-testid="institution-members">128</td>
+          <td data-testid="institution-addresses">342</td>
+          <td>
+            <span class="badge active" data-testid="institution-webhook">Configured</span>
+          </td>
+        </tr>
+        <tr data-row="institution" data-testid="institution-row" data-name="Contoso Technical College" data-tenant="contoso-technical" data-webhook="false">
+          <th scope="row" data-testid="institution-name">Contoso Technical College</th>
+          <td data-testid="institution-tenant">contoso-technical</td>
+          <td data-testid="institution-members">54</td>
+          <td data-testid="institution-addresses">97</td>
+          <td>
+            <span class="badge pending" data-testid="institution-webhook">Missing</span>
+          </td>
+        </tr>
+        <tr data-row="institution" data-testid="institution-row" data-name="Fabrikam Law School" data-tenant="fabrikam-law" data-webhook="true">
+          <th scope="row" data-testid="institution-name">Fabrikam Law School</th>
+          <td data-testid="institution-tenant">fabrikam-law</td>
+          <td data-testid="institution-members">35</td>
+          <td data-testid="institution-addresses">61</td>
+          <td>
+            <span class="badge active" data-testid="institution-webhook">Configured</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p id="adminEmptyState" class="empty" data-testid="admin-empty-state" hidden>No institutions matched the current filters.</p>
+  </main>
+
+  <script type="module">
+    const searchInput = document.getElementById('searchInput');
+    const webhookFilter = document.getElementById('webhookFilter');
+    const emptyState = document.getElementById('adminEmptyState');
+    const count = document.querySelector('[data-testid="institution-count"]');
+    const healthIndicator = document.querySelector('[data-testid="admin-health"]');
+    const rows = Array.from(document.querySelectorAll('[data-row="institution"]'));
+
+    function render() {
+      const term = searchInput.value.trim().toLowerCase();
+      const requireWebhook = webhookFilter.checked;
+      let visible = 0;
+
+      rows.forEach(row => {
+        const name = row.dataset.name?.toLowerCase() ?? '';
+        const tenant = row.dataset.tenant?.toLowerCase() ?? '';
+        const webhookEnabled = row.dataset.webhook === 'true';
+
+        const matchesSearch = !term || name.includes(term) || tenant.includes(term);
+        const matchesWebhook = !requireWebhook || webhookEnabled;
+        const shouldShow = matchesSearch && matchesWebhook;
+
+        if (shouldShow) {
+          row.removeAttribute('hidden');
+          row.setAttribute('data-testid', 'institution-row');
+          visible += 1;
+        } else {
+          row.setAttribute('hidden', '');
+          row.setAttribute('data-testid', 'institution-row-hidden');
+        }
+      });
+
+      count.textContent = `${visible} institution${visible === 1 ? '' : 's'}`;
+      emptyState.hidden = visible > 0;
+    }
+
+    searchInput.addEventListener('input', render);
+    webhookFilter.addEventListener('change', render);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      healthIndicator.textContent = 'Connected';
+      render();
+    });
+  </script>
+</body>
+</html>

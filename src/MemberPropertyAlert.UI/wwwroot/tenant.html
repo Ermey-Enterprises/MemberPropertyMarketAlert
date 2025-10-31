@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Tenant Alerts · Member Property Market Alert</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="layout">
+    <header class="hero">
+      <a class="back" href="/" data-testid="back-link">← Back</a>
+      <h1>Tenant Alert Dashboard</h1>
+      <p class="tagline">Real-time visibility into your registered property alerts.</p>
+      <div class="status-pill" data-testid="tenant-health">Loading…</div>
+    </header>
+
+    <section class="controls">
+      <label class="control">
+        <span>Status Filter</span>
+        <select id="statusFilter" data-testid="status-filter">
+          <option value="all">All activity</option>
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </label>
+      <button id="refreshAlerts" class="primary" data-testid="refresh-alerts">Refresh alerts</button>
+      <span class="meta" data-testid="result-count">0 alerts</span>
+    </section>
+
+    <p id="emptyState" class="empty" data-testid="empty-state" hidden>No alerts match the selected status.</p>
+    <ul id="alertList" class="list" data-testid="alert-list">
+      <li class="card" data-card="alert" data-testid="alert-card" data-status="active" data-institution="Northwind University">
+        <header class="card-title">
+          <h2>123 Market Street, Chicago, IL</h2>
+          <span class="badge active" data-status-badge data-testid="alert-status">Active</span>
+        </header>
+        <dl class="card-metadata">
+          <div>
+            <dt>Institution</dt>
+            <dd data-testid="alert-institution">Northwind University</dd>
+          </div>
+          <div>
+            <dt>Monthly Rent</dt>
+            <dd data-testid="alert-rent">$2,450</dd>
+          </div>
+          <div>
+            <dt>Last checked</dt>
+            <dd data-testid="alert-last-checked">2 hours ago</dd>
+          </div>
+        </dl>
+      </li>
+      <li class="card" data-card="alert" data-testid="alert-card" data-status="pending" data-institution="Contoso Technical College">
+        <header class="card-title">
+          <h2>88 Innovation Way, Austin, TX</h2>
+          <span class="badge pending" data-status-badge data-testid="alert-status">Pending</span>
+        </header>
+        <dl class="card-metadata">
+          <div>
+            <dt>Institution</dt>
+            <dd data-testid="alert-institution">Contoso Technical College</dd>
+          </div>
+          <div>
+            <dt>Monthly Rent</dt>
+            <dd data-testid="alert-rent">$1,825</dd>
+          </div>
+          <div>
+            <dt>Last checked</dt>
+            <dd data-testid="alert-last-checked">5 hours ago</dd>
+          </div>
+        </dl>
+      </li>
+      <li class="card" data-card="alert" data-testid="alert-card" data-status="resolved" data-institution="Fabrikam Law School">
+        <header class="card-title">
+          <h2>501 Lakeview Ave, Seattle, WA</h2>
+          <span class="badge resolved" data-status-badge data-testid="alert-status">Resolved</span>
+        </header>
+        <dl class="card-metadata">
+          <div>
+            <dt>Institution</dt>
+            <dd data-testid="alert-institution">Fabrikam Law School</dd>
+          </div>
+          <div>
+            <dt>Monthly Rent</dt>
+            <dd data-testid="alert-rent">$2,725</dd>
+          </div>
+          <div>
+            <dt>Last checked</dt>
+            <dd data-testid="alert-last-checked">Yesterday</dd>
+          </div>
+        </dl>
+      </li>
+    </ul>
+  </main>
+
+  <script type="module">
+    const statusFilter = document.getElementById('statusFilter');
+    const refreshButton = document.getElementById('refreshAlerts');
+    const emptyState = document.getElementById('emptyState');
+    const resultCount = document.querySelector('[data-testid="result-count"]');
+    const healthIndicator = document.querySelector('[data-testid="tenant-health"]');
+    const cards = Array.from(document.querySelectorAll('[data-card="alert"]'));
+
+    function render() {
+      const selected = statusFilter.value;
+      let visible = 0;
+
+      cards.forEach(card => {
+        const status = (card.dataset.status ?? '').toLowerCase();
+        const matches = selected === 'all' || status === selected;
+        const statusBadge = card.querySelector('[data-status-badge]');
+
+        if (matches) {
+          card.removeAttribute('hidden');
+          card.setAttribute('data-testid', 'alert-card');
+          statusBadge?.setAttribute('data-testid', 'alert-status');
+          visible += 1;
+        } else {
+          card.setAttribute('hidden', '');
+          card.setAttribute('data-testid', 'alert-card-hidden');
+          statusBadge?.setAttribute('data-testid', 'alert-status-hidden');
+        }
+      });
+
+      resultCount.textContent = `${visible} alert${visible === 1 ? '' : 's'}`;
+      emptyState.hidden = visible > 0;
+    }
+
+    function refresh() {
+      refreshButton.disabled = true;
+      refreshButton.dataset.loading = 'true';
+
+      healthIndicator.textContent = 'Connected';
+      healthIndicator.classList.remove('error');
+
+      setTimeout(() => {
+        refreshButton.disabled = false;
+        delete refreshButton.dataset.loading;
+      }, 400);
+    }
+
+    statusFilter.addEventListener('change', render);
+    refreshButton.addEventListener('click', refresh);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      render();
+      refresh();
+    });
+  </script>
+</body>
+</html>

@@ -11,9 +11,14 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.41.2" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,8 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\MemberPropertyAlert.Functions\MemberPropertyAlert.Functions.csproj" />
-    <ProjectReference Include="..\..\src\MemberPropertyAlert.Core\MemberPropertyAlert.Core.csproj" />
+    <ProjectReference Include="..\..\src\MemberPropertyAlert.UI\MemberPropertyAlert.UI.csproj" />
   </ItemGroup>
 
 </Project>

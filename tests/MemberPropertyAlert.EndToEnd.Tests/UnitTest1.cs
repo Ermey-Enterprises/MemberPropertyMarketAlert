@@ -1,10 +1,3 @@
 namespace MemberPropertyAlert.EndToEnd.Tests;
 
-public class UnitTest1
-{
-    [Fact]
-    public void Test1()
-    {
-
-    }
-}
+// Intentionally left blank after migrating tests to UiEndToEndTests.cs.
