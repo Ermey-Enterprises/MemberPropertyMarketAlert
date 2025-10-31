@@ -188,14 +188,6 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       
-      - name: Setup Node.js
-        if: needs.analyze-changes.outputs.ui-changed == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'src/MemberPropertyAlert.UI/package.json'
-      
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -218,53 +210,24 @@ jobs:
           echo "🧪 Running tests..."
           dotnet test MemberPropertyMarketAlert.sln --no-build --configuration Release --verbosity minimal --logger "console;verbosity=minimal"
       
-      - name: Build React UI
+      - name: Publish UI project
         if: needs.analyze-changes.outputs.ui-changed == 'true'
-        working-directory: src/MemberPropertyAlert.UI
         run: |
-          echo "🎨 Building React UI..."
-          
-          # Debug information
-          echo "🔍 Environment debugging:"
-          echo "  Node version: $(node --version)"
-          echo "  NPM version: $(npm --version)"
-          echo "  Working directory: $(pwd)"
-          echo "  Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
-          echo "  Package-lock.json exists: $(test -f package-lock.json && echo 'YES' || echo 'NO')"
-          
-          # Show package.json content for debugging
-          echo "📄 Package.json content:"
-          cat package.json
-          
-          echo "📦 Installing dependencies..."
-          if [ -f "package-lock.json" ]; then
-            echo "🔧 Using npm ci (clean install)..."
-            npm ci --verbose
-          else
-            echo "🔧 Using npm install..."
-            npm install --verbose
-          fi
-          
-          echo "✅ Dependencies installed successfully"
-          echo "📋 Installed packages:"
-          npm list --depth=0
-          
-          echo "🧪 Running React tests..."
-          npm test -- --ci --coverage --maxWorkers=2 --passWithNoTests --watchAll=false --verbose
-          
-          echo "📦 Building production bundle..."
-          # Set environment variables for React build
-          export REACT_APP_API_BASE_URL="https://func-mpa-${{ needs.analyze-changes.outputs.deploy-environment }}-eus2-6ih6.azurewebsites.net/api"
-          export REACT_APP_ENVIRONMENT="${{ needs.analyze-changes.outputs.deploy-environment }}"
-          echo "🔧 Build environment variables:"
-          echo "  REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL"
-          echo "  REACT_APP_ENVIRONMENT=$REACT_APP_ENVIRONMENT"
-          
-          npm run build --verbose
-          
-          echo "✅ React build completed successfully"
-          echo "📁 Build output:"
-          ls -la build/ || echo "Build directory not found"
+          echo "🚀 Publishing ASP.NET Core UI project..."
+
+          rm -rf ./publish/ui
+
+          dotnet publish src/MemberPropertyAlert.UI/MemberPropertyAlert.UI.csproj \
+            --configuration Release \
+            --output ./publish/ui \
+            --no-restore \
+            --verbosity minimal
+
+          echo "✅ UI project published"
+          echo "📁 Published output preview:"
+          ls -la ./publish/ui | head -40
+          echo "📁 Static assets preview:"
+          ls -la ./publish/ui/wwwroot | head -40
       
       - name: Publish Function App
         if: needs.analyze-changes.outputs.functions-changed == 'true'
@@ -279,45 +242,26 @@ jobs:
             --no-build \
             --verbosity minimal
       
-      - name: Prepare UI deployment package
+      - name: Verify UI deployment package
         if: needs.analyze-changes.outputs.ui-changed == 'true'
         run: |
-          echo "📦 Preparing UI deployment package..."
-          mkdir -p ./publish/ui
-          
-          # Copy React build files to build subdirectory (server.js expects this structure)
-          if [ -d "src/MemberPropertyAlert.UI/build" ]; then
-            echo "📁 Copying React build files to build/ subdirectory..."
-            mkdir -p ./publish/ui/build
-            cp -r src/MemberPropertyAlert.UI/build/* ./publish/ui/build/
-          elif [ -d "src/MemberPropertyAlert.UI/dist" ]; then
-            echo "📁 Copying React dist files to build/ subdirectory..."
-            mkdir -p ./publish/ui/build
-            cp -r src/MemberPropertyAlert.UI/dist/* ./publish/ui/build/
-          else
-            echo "❌ React build output not found"
+          echo "🔍 Verifying published UI assets..."
+          if [ ! -f "./publish/ui/MemberPropertyAlert.UI.dll" ]; then
+            echo "❌ Published UI assembly not found"
+            ls -la ./publish/ui
             exit 1
           fi
-          
-          # Copy Express server files needed for Azure deployment
-          echo "📁 Copying Express server files..."
-          cp src/MemberPropertyAlert.UI/server.js ./publish/ui/
-          cp src/MemberPropertyAlert.UI/package.json ./publish/ui/
-          cp src/MemberPropertyAlert.UI/package-lock.json ./publish/ui/ 2>/dev/null || echo "⚠️ package-lock.json not found, skipping"
-          
-          # Install production dependencies in the deployment package
-          echo "📦 Installing production dependencies for deployment..."
-          cd ./publish/ui
-          npm install --production --no-optional
-          cd ../..
-          
-          echo "✅ UI deployment package prepared with Express server and dependencies"
-          echo "📋 Package contents:"
-          ls -la ./publish/ui/
-          echo "📋 Build directory contents:"
-          ls -la ./publish/ui/build/ | head -10
-          echo "📋 Node modules installed:"
-          ls -la ./publish/ui/node_modules/ | head -10
+
+          if [ ! -d "./publish/ui/wwwroot" ]; then
+            echo "❌ Published wwwroot directory missing"
+            exit 1
+          fi
+
+          echo "✅ Published UI artifacts are ready for deployment"
+          echo "📁 Published root contents:"
+          ls -la ./publish/ui | head -40
+          echo "📁 Published wwwroot contents:"
+          ls -la ./publish/ui/wwwroot | head -40
       
       - name: Upload Function App artifact
         if: needs.analyze-changes.outputs.functions-changed == 'true'
@@ -653,33 +597,35 @@ jobs:
             exit 1
           fi
           
-          # Configure Web App for Node.js startup
-          echo "⚙️ Configuring Web App settings for Node.js..."
-          
-          # Set startup command for Node.js
+          # Configure Web App for ASP.NET Core deployment
+          echo "⚙️ Configuring Web App settings for ASP.NET Core..."
+
           az webapp config set \
             --resource-group "$RG_NAME" \
             --name "$APP_SERVICE_NAME" \
-            --startup-file "node server.js" \
+            --startup-file "" \
             --output none
-          
-          # Set Node.js version and other app settings
+
+          az webapp config appsettings delete \
+            --resource-group "$RG_NAME" \
+            --name "$APP_SERVICE_NAME" \
+            --setting-names WEBSITE_NODE_DEFAULT_VERSION NODE_ENV PORT \
+            --output none 2>/dev/null || echo "ℹ️ No legacy Node.js settings to delete"
+
           az webapp config appsettings set \
             --resource-group "$RG_NAME" \
             --name "$APP_SERVICE_NAME" \
             --settings \
-              WEBSITE_NODE_DEFAULT_VERSION="18" \
-              NODE_ENV="production" \
-              PORT="8080" \
+              ASPNETCORE_ENVIRONMENT="Production" \
               WEBSITE_RUN_FROM_PACKAGE="1" \
             --output none
-          
-          echo "✅ Web App configuration updated"
-          
+
+          echo "✅ Web App configuration updated for ASP.NET Core"
+
           # Create deployment package
-          cd ./publish
-          zip -r ../web-app.zip . > /dev/null 2>&1
-          cd ..
+          cd ./publish/ui
+          zip -r ../../web-app.zip . > /dev/null 2>&1
+          cd ../..
           
           # Deploy with timeout and better error handling
           echo "🚀 Deploying Web App..."
@@ -701,13 +647,13 @@ jobs:
           
           if [ -n "$APP_URL" ]; then
             echo "🌐 App URL: https://$APP_URL"
-            echo "🏥 Health check URL: https://$APP_URL/health"
+            echo "🏥 Health check URL: https://$APP_URL/api/health"
             
             # Try to hit the health endpoint
             echo "🔍 Testing health endpoint..."
             for i in {1..5}; do
               echo "  Attempt $i/5..."
-              if curl -f -s --max-time 30 "https://$APP_URL/health" > /dev/null; then
+              if curl -f -s --max-time 30 "https://$APP_URL/api/health" > /dev/null; then
                 echo "✅ Health check passed!"
                 break
               else
