@@ -1,0 +1,6 @@
+@MemberPropertyAlert.MockWebhookClient_HostAddress = http://localhost:5229
+
+GET {{MemberPropertyAlert.MockWebhookClient_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
