@@ -12,6 +12,7 @@ using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Results;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Logging;
+using MemberPropertyAlert.Functions.Security;
 
 namespace MemberPropertyAlert.Functions.Infrastructure.Repositories;
 
@@ -19,10 +20,15 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
 {
     private readonly ICosmosContainerFactory _containerFactory;
     private readonly ILogger<CosmosInstitutionRepository> _logger;
+    private readonly ITenantRequestContextAccessor _tenantAccessor;
 
-    public CosmosInstitutionRepository(ICosmosContainerFactory containerFactory, ILogger<CosmosInstitutionRepository> logger)
+    public CosmosInstitutionRepository(
+        ICosmosContainerFactory containerFactory,
+        ITenantRequestContextAccessor tenantAccessor,
+        ILogger<CosmosInstitutionRepository> logger)
     {
         _containerFactory = containerFactory;
+        _tenantAccessor = tenantAccessor;
         _logger = logger;
     }
 
@@ -30,6 +36,17 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
     {
         try
         {
+            var tenantContext = _tenantAccessor.Current;
+            if (tenantContext is null)
+            {
+                return Result<Institution>.Failure("Tenant context is not available.");
+            }
+
+            if (!tenantContext.IsPlatformAdmin && !string.Equals(tenantContext.TenantId, institution.TenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<Institution>.Failure("Cannot create institutions for a different tenant.");
+            }
+
             var container = await _containerFactory.GetInstitutionsContainerAsync(cancellationToken);
             var document = InstitutionDocument.FromDomain(institution);
             await container.CreateItemAsync(document, new PartitionKey(document.PartitionKey), cancellationToken: cancellationToken);
@@ -52,7 +69,14 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
         {
             var container = await _containerFactory.GetInstitutionsContainerAsync(cancellationToken);
             var response = await container.ReadItemAsync<InstitutionDocument>(institutionId, new PartitionKey(institutionId), cancellationToken: cancellationToken);
-            return Result<Institution?>.Success(response.Resource.ToDomain());
+            var document = response.Resource;
+            if (!IsAuthorizedForTenant(document.TenantId))
+            {
+                _logger.LogWarning("Unauthorized access attempt for institution {InstitutionId} in tenant {TenantId}", institutionId, document.TenantId);
+                return Result<Institution?>.Success(null);
+            }
+
+            return Result<Institution?>.Success(document.ToDomain());
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -68,23 +92,44 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
     public async Task<PagedResult<Institution>> ListAsync(int pageNumber, int pageSize, CancellationToken cancellationToken = default)
     {
         var container = await _containerFactory.GetInstitutionsContainerAsync(cancellationToken);
-        var queryDefinition = new QueryDefinition("SELECT * FROM c")
-            .WithParameter("@offset", (pageNumber - 1) * pageSize)
+        var tenantContext = _tenantAccessor.Current;
+        if (tenantContext is null)
+        {
+            return new PagedResult<Institution>(Array.Empty<Institution>(), 0, pageNumber, pageSize);
+        }
+
+        var offset = (pageNumber - 1) * pageSize;
+        var baseQuery = tenantContext.IsPlatformAdmin
+            ? "SELECT * FROM c OFFSET @offset LIMIT @limit"
+            : "SELECT * FROM c WHERE c.tenantId = @tenantId OFFSET @offset LIMIT @limit";
+
+        var queryDefinition = new QueryDefinition(baseQuery)
+            .WithParameter("@offset", offset)
             .WithParameter("@limit", pageSize);
 
-        var query = container.GetItemQueryIterator<InstitutionDocument>("SELECT * FROM c OFFSET @offset LIMIT @limit", requestOptions: new QueryRequestOptions
+        if (!tenantContext.IsPlatformAdmin)
+        {
+            queryDefinition = queryDefinition.WithParameter("@tenantId", tenantContext.TenantId);
+        }
+
+        var iterator = container.GetItemQueryIterator<InstitutionDocument>(queryDefinition, requestOptions: new QueryRequestOptions
         {
             MaxItemCount = pageSize
         });
 
         var documents = new List<InstitutionDocument>();
-        while (query.HasMoreResults)
+        while (iterator.HasMoreResults)
         {
-            var response = await query.ReadNextAsync(cancellationToken);
-            documents.AddRange(response.Resource);
+            var response = await iterator.ReadNextAsync(cancellationToken);
+            documents.AddRange(response.Resource.Where(d => IsAuthorizedForTenant(d.TenantId)));
         }
 
-        var countIterator = container.GetItemQueryIterator<int>("SELECT VALUE COUNT(1) FROM c");
+        QueryDefinition countQuery = tenantContext.IsPlatformAdmin
+            ? new QueryDefinition("SELECT VALUE COUNT(1) FROM c")
+            : new QueryDefinition("SELECT VALUE COUNT(1) FROM c WHERE c.tenantId = @tenantId")
+                .WithParameter("@tenantId", tenantContext.TenantId);
+
+        var countIterator = container.GetItemQueryIterator<int>(countQuery);
         var total = 0;
         while (countIterator.HasMoreResults)
         {
@@ -100,6 +145,17 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
     {
         try
         {
+            var tenantContext = _tenantAccessor.Current;
+            if (tenantContext is null)
+            {
+                return Result.Failure("Tenant context is not available.");
+            }
+
+            if (!tenantContext.IsPlatformAdmin && !string.Equals(tenantContext.TenantId, institution.TenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                return Result.Failure("Not authorized to update this institution.");
+            }
+
             var container = await _containerFactory.GetInstitutionsContainerAsync(cancellationToken);
             var document = InstitutionDocument.FromDomain(institution);
             await container.UpsertItemAsync(document, new PartitionKey(document.PartitionKey), cancellationToken: cancellationToken);
@@ -117,6 +173,28 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
         try
         {
             var container = await _containerFactory.GetInstitutionsContainerAsync(cancellationToken);
+            var tenantContext = _tenantAccessor.Current;
+            if (tenantContext is null)
+            {
+                return Result.Failure("Tenant context is not available.");
+            }
+
+            if (!tenantContext.IsPlatformAdmin)
+            {
+                try
+                {
+                    var existing = await container.ReadItemAsync<InstitutionDocument>(institutionId, new PartitionKey(institutionId), cancellationToken: cancellationToken);
+                    if (!string.Equals(existing.Resource.TenantId, tenantContext.TenantId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Result.Failure("Not authorized to delete this institution.");
+                    }
+                }
+                catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+                {
+                    return Result.Success();
+                }
+            }
+
             await container.DeleteItemAsync<InstitutionDocument>(institutionId, new PartitionKey(institutionId), cancellationToken: cancellationToken);
             return Result.Success();
         }
@@ -135,13 +213,18 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
     {
         try
         {
+            if (_tenantAccessor.Current is null)
+            {
+                return Result<Core.Models.InstitutionCounts>.Failure("Tenant context is not available.");
+            }
+
             var container = await _containerFactory.GetInstitutionsContainerAsync(cancellationToken);
             var query = container.GetItemQueryIterator<InstitutionDocument>("SELECT * FROM c");
             var institutions = new List<InstitutionDocument>();
             while (query.HasMoreResults)
             {
                 var response = await query.ReadNextAsync(cancellationToken);
-                institutions.AddRange(response.Resource);
+                institutions.AddRange(response.Resource.Where(doc => IsAuthorizedForTenant(doc.TenantId)));
             }
 
             var total = institutions.Count;
@@ -161,12 +244,28 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
         }
     }
 
+    private bool IsAuthorizedForTenant(string tenantId)
+    {
+        var context = _tenantAccessor.Current;
+        if (context is null)
+        {
+            return false;
+        }
+
+        if (context.IsPlatformAdmin)
+        {
+            return true;
+        }
+
+        return string.Equals(context.TenantId, tenantId, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class InstitutionDocument
     {
-        public string Id { get; set; } = default!;
-        public string PartitionKey => Id;
-        public string Name { get; set; } = default!;
-        public string ApiKeyHash { get; set; } = default!;
+    public string Id { get; set; } = default!;
+    public string TenantId { get; set; } = default!;
+    public string PartitionKey => Id;
+    public string Name { get; set; } = default!;
         public string TimeZoneId { get; set; } = default!;
         public InstitutionStatus Status { get; set; }
         public string? PrimaryContactEmail { get; set; }
@@ -179,8 +278,8 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
             return new InstitutionDocument
             {
                 Id = institution.Id,
+                TenantId = institution.TenantId,
                 Name = institution.Name,
-                ApiKeyHash = institution.ApiKeyHash,
                 TimeZoneId = institution.TimeZoneId,
                 Status = institution.Status,
                 PrimaryContactEmail = institution.PrimaryContactEmail,
@@ -193,13 +292,14 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
         public Institution ToDomain()
         {
             var addresses = Addresses?.Select(a => a.ToDomain()).ToList();
-            return Institution.Rehydrate(Id, Name, ApiKeyHash, TimeZoneId, Status, PrimaryContactEmail, CreatedAtUtc, UpdatedAtUtc, addresses);
+            return Institution.Rehydrate(Id, TenantId, Name, TimeZoneId, Status, PrimaryContactEmail, CreatedAtUtc, UpdatedAtUtc, addresses);
         }
     }
 
     private sealed class MemberAddressDocument
     {
         public string Id { get; set; } = default!;
+        public string TenantId { get; set; } = default!;
         public string InstitutionId { get; set; } = default!;
         public bool IsActive { get; set; }
         public DateTimeOffset CreatedAtUtc { get; set; }
@@ -214,6 +314,7 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
             return new MemberAddressDocument
             {
                 Id = address.Id,
+                TenantId = address.TenantId,
                 InstitutionId = address.InstitutionId,
                 IsActive = address.IsActive,
                 CreatedAtUtc = address.CreatedAtUtc,
@@ -228,7 +329,7 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
         public MemberAddress ToDomain()
         {
             var valueObject = Address.ToValueObject();
-            return MemberAddress.Rehydrate(Id, InstitutionId, valueObject, Tags, IsActive, CreatedAtUtc, UpdatedAtUtc, LastMatchedAtUtc, LastMatchedListingId);
+            return MemberAddress.Rehydrate(Id, TenantId, InstitutionId, valueObject, Tags, IsActive, CreatedAtUtc, UpdatedAtUtc, LastMatchedAtUtc, LastMatchedListingId);
         }
     }
 

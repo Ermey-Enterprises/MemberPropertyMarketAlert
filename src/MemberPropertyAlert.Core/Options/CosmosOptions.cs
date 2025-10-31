@@ -4,7 +4,9 @@ public sealed class CosmosOptions
 {
     public const string SectionName = "Cosmos";
 
-    public string ConnectionString { get; set; } = string.Empty;
+    public string? ConnectionString { get; set; }
+    public string? ConnectionStringSecretName { get; set; }
+    public string? AccountEndpoint { get; set; }
     public string DatabaseName { get; set; } = "MemberPropertyMarketAlert";
     public string InstitutionsContainerName { get; set; } = "institutions";
     public string AddressesContainerName { get; set; } = "addresses";

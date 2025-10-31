@@ -30,9 +30,9 @@ public sealed class InstitutionService : IInstitutionService
     public Task<Result<Institution?>> GetAsync(string id, CancellationToken cancellationToken = default)
         => _institutionRepository.GetAsync(id, cancellationToken);
 
-    public async Task<Result<Institution>> CreateAsync(string name, string apiKeyHash, string timeZoneId, string? primaryContactEmail, CancellationToken cancellationToken = default)
+    public async Task<Result<Institution>> CreateAsync(string tenantId, string name, string timeZoneId, string? primaryContactEmail, CancellationToken cancellationToken = default)
     {
-        var result = Institution.Create(Guid.NewGuid().ToString("N"), name, apiKeyHash, timeZoneId, InstitutionStatus.Active, primaryContactEmail);
+        var result = Institution.Create(Guid.NewGuid().ToString("N"), tenantId, name, timeZoneId, InstitutionStatus.Active, primaryContactEmail);
         if (result.IsFailure || result.Value is null)
         {
             return Result<Institution>.Failure(result.Error ?? "Unable to create institution.");
@@ -82,7 +82,7 @@ public sealed class InstitutionService : IInstitutionService
             return Result<MemberAddress>.Failure("Institution not found.");
         }
 
-        var addressResult = MemberAddress.Create(Guid.NewGuid().ToString("N"), institution.Id, address, tags);
+    var addressResult = MemberAddress.Create(Guid.NewGuid().ToString("N"), institution.TenantId, institution.Id, address, tags);
         if (addressResult.IsFailure || addressResult.Value is null)
         {
             return Result<MemberAddress>.Failure(addressResult.Error ?? "Unable to create address.");

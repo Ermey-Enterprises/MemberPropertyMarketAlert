@@ -11,6 +11,7 @@ using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Results;
 using MemberPropertyAlert.Functions.Extensions;
 using MemberPropertyAlert.Functions.Models;
+using MemberPropertyAlert.Functions.Infrastructure.Telemetry;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -24,14 +25,17 @@ public sealed class InstitutionFunctions
     private readonly IInstitutionService _institutionService;
     private readonly IMemberAddressRepository _memberAddressRepository;
     private readonly ILogger<InstitutionFunctions> _logger;
+    private readonly IAuditLogger _auditLogger;
 
     public InstitutionFunctions(
         IInstitutionService institutionService,
         IMemberAddressRepository memberAddressRepository,
+        IAuditLogger auditLogger,
         ILogger<InstitutionFunctions> logger)
     {
         _institutionService = institutionService;
         _memberAddressRepository = memberAddressRepository;
+        _auditLogger = auditLogger;
         _logger = logger;
     }
 
@@ -41,23 +45,59 @@ public sealed class InstitutionFunctions
     [OpenApiParameter("pageSize", In = ParameterLocation.Query, Required = false, Type = typeof(int), Description = "Page size (max 200)." )]
     [OpenApiResponseWithBody(HttpStatusCode.OK, "application/json", typeof(PagedResponse<InstitutionResponse>))]
     public async Task<HttpResponseData> GetInstitutions(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "institutions")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "institutions")] HttpRequestData req,
+        FunctionContext context)
     {
+        var tenantContext = context.GetTenantRequestContext();
+        if (tenantContext is null)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Unauthorized, "Authentication is required.");
+        }
+
         var query = FunctionHttpHelpers.ParseQuery(req);
         var pageNumber = FunctionHttpHelpers.GetPositiveInt(query, "pageNumber", 1);
         var pageSize = Math.Clamp(FunctionHttpHelpers.GetPositiveInt(query, "pageSize", 50), 1, 200);
 
-        var result = await _institutionService.ListAsync(pageNumber, pageSize);
+        if (!tenantContext.IsPlatformAdmin)
+        {
+            var institutionId = tenantContext.InstitutionId ?? tenantContext.TenantId;
+            if (string.IsNullOrWhiteSpace(institutionId))
+            {
+                return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Forbidden, "Tenant is not associated with an institution.");
+            }
 
-        var payload = new PagedResponse<InstitutionResponse>(
+            var institutionResult = await _institutionService.GetAsync(institutionId);
+            if (institutionResult.IsFailure)
+            {
+                return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, institutionResult.Error ?? "Failed to retrieve institution.");
+            }
+
+            if (institutionResult.Value is null)
+            {
+                return req.CreateResponse(HttpStatusCode.NotFound);
+            }
+
+            var payload = new PagedResponse<InstitutionResponse>(
+                new[] { MapInstitutionDetail(institutionResult.Value) },
+                1,
+                1,
+                1);
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteJsonAsync(payload);
+            return response;
+        }
+
+        var result = await _institutionService.ListAsync(pageNumber, pageSize);
+        var adminPayload = new PagedResponse<InstitutionResponse>(
             result.Items.Select(MapInstitutionSummary).ToList(),
             result.TotalCount,
             result.PageNumber,
             result.PageSize);
 
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteJsonAsync(payload);
-        return response;
+        var adminResponse = req.CreateResponse(HttpStatusCode.OK);
+        await adminResponse.WriteJsonAsync(adminPayload);
+        return adminResponse;
     }
 
     [Function("GetInstitutionById")]
@@ -67,8 +107,15 @@ public sealed class InstitutionFunctions
     [OpenApiResponseWithoutBody(HttpStatusCode.NotFound, Description = "Institution not found.")]
     public async Task<HttpResponseData> GetInstitutionById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "institutions/{id}")] HttpRequestData req,
-        string id)
+        string id,
+        FunctionContext context)
     {
+        var tenantContext = context.GetTenantRequestContext();
+        if (tenantContext is null)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Unauthorized, "Authentication is required.");
+        }
+
         var result = await _institutionService.GetAsync(id);
         if (result.IsFailure)
         {
@@ -81,6 +128,11 @@ public sealed class InstitutionFunctions
         }
 
         var institution = result.Value;
+        if (!tenantContext.IsPlatformAdmin && !string.Equals(institution.TenantId, tenantContext.TenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Forbidden, "Not authorized to access this institution.");
+        }
+
         var responsePayload = MapInstitutionDetail(institution);
         var response = req.CreateResponse(HttpStatusCode.OK);
         await response.WriteJsonAsync(responsePayload);
@@ -92,23 +144,48 @@ public sealed class InstitutionFunctions
     [OpenApiRequestBody("application/json", typeof(CreateInstitutionRequest), Required = true)]
     [OpenApiResponseWithBody(HttpStatusCode.Created, "application/json", typeof(InstitutionResponse))]
     public async Task<HttpResponseData> CreateInstitution(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "institutions")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "institutions")] HttpRequestData req,
+        FunctionContext context)
     {
+        var tenantContext = context.GetTenantRequestContext();
+        if (tenantContext is null)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Unauthorized, "Authentication is required.");
+        }
+
+        if (!tenantContext.IsPlatformAdmin)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Forbidden, "Only platform administrators can create institutions.");
+        }
+
     var payload = await MemberPropertyAlert.Functions.Extensions.HttpRequestDataExtensions.ReadJsonBodyAsync<CreateInstitutionRequest>(req);
         if (payload is null)
         {
             return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, "Request body is required.");
         }
 
-        var result = await _institutionService.CreateAsync(payload.Name, payload.ApiKeyHash, payload.TimeZoneId, payload.PrimaryContactEmail);
+        if (string.IsNullOrWhiteSpace(payload.TenantId))
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, "TenantId is required.");
+        }
+
+        var result = await _institutionService.CreateAsync(payload.TenantId, payload.Name, payload.TimeZoneId, payload.PrimaryContactEmail);
         if (result.IsFailure || result.Value is null)
         {
             return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, result.Error ?? "Failed to create institution.");
         }
 
         var response = req.CreateResponse(HttpStatusCode.Created);
-        await response.WriteJsonAsync(MapInstitutionDetail(result.Value));
+        var createdInstitution = result.Value;
+        await response.WriteJsonAsync(MapInstitutionDetail(createdInstitution));
         response.Headers.Add("Location", $"/institutions/{result.Value.Id}");
+
+        await _auditLogger.TrackEventAsync("InstitutionCreated", new Dictionary<string, string?>
+        {
+            ["institutionId"] = createdInstitution.Id,
+            ["targetTenantId"] = createdInstitution.TenantId
+        });
+
         return response;
     }
 
@@ -119,12 +196,36 @@ public sealed class InstitutionFunctions
     [OpenApiResponseWithBody(HttpStatusCode.OK, "application/json", typeof(InstitutionResponse))]
     public async Task<HttpResponseData> UpdateInstitution(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "institutions/{id}")] HttpRequestData req,
-        string id)
+        string id,
+        FunctionContext context)
     {
-    var payload = await MemberPropertyAlert.Functions.Extensions.HttpRequestDataExtensions.ReadJsonBodyAsync<UpdateInstitutionRequest>(req);
+        var tenantContext = context.GetTenantRequestContext();
+        if (tenantContext is null)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Unauthorized, "Authentication is required.");
+        }
+
+        var payload = await MemberPropertyAlert.Functions.Extensions.HttpRequestDataExtensions.ReadJsonBodyAsync<UpdateInstitutionRequest>(req);
         if (payload is null)
         {
             return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, "Request body is required.");
+        }
+
+        var existingResult = await _institutionService.GetAsync(id);
+        if (existingResult.IsFailure)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, existingResult.Error ?? "Unable to retrieve institution.");
+        }
+
+        var existing = existingResult.Value;
+        if (existing is null)
+        {
+            return req.CreateResponse(HttpStatusCode.NotFound);
+        }
+
+        if (!tenantContext.IsPlatformAdmin && !string.Equals(existing.TenantId, tenantContext.TenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Forbidden, "Not authorized to modify this institution.");
         }
 
         var updateResult = await _institutionService.UpdateAsync(id, payload.Name, payload.PrimaryContactEmail, payload.Status);
@@ -139,6 +240,12 @@ public sealed class InstitutionFunctions
             return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, refreshed.Error ?? "Unable to retrieve updated institution.");
         }
 
+        await _auditLogger.TrackEventAsync("InstitutionUpdated", new Dictionary<string, string?>
+        {
+            ["institutionId"] = id,
+            ["targetTenantId"] = refreshed.Value.TenantId
+        });
+
         var response = req.CreateResponse(HttpStatusCode.OK);
         await response.WriteJsonAsync(MapInstitutionDetail(refreshed.Value));
         return response;
@@ -150,13 +257,43 @@ public sealed class InstitutionFunctions
     [OpenApiResponseWithoutBody(HttpStatusCode.NoContent)]
     public async Task<HttpResponseData> DeleteInstitution(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "institutions/{id}")] HttpRequestData req,
-        string id)
+        string id,
+        FunctionContext context)
     {
+        var tenantContext = context.GetTenantRequestContext();
+        if (tenantContext is null)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Unauthorized, "Authentication is required.");
+        }
+
+        var existingResult = await _institutionService.GetAsync(id);
+        if (existingResult.IsFailure)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, existingResult.Error ?? "Unable to retrieve institution.");
+        }
+
+        var existing = existingResult.Value;
+        if (existing is null)
+        {
+            return req.CreateResponse(HttpStatusCode.NotFound);
+        }
+
+        if (!tenantContext.IsPlatformAdmin && !string.Equals(existing.TenantId, tenantContext.TenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Forbidden, "Not authorized to delete this institution.");
+        }
+
         var result = await _institutionService.DeleteAsync(id);
         if (result.IsFailure)
         {
             return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, result.Error ?? "Failed to delete institution.");
         }
+
+        await _auditLogger.TrackEventAsync("InstitutionDeleted", new Dictionary<string, string?>
+        {
+            ["institutionId"] = id,
+            ["targetTenantId"] = existing.TenantId
+        });
 
         return req.CreateResponse(HttpStatusCode.NoContent);
     }
@@ -169,8 +306,22 @@ public sealed class InstitutionFunctions
     [OpenApiResponseWithBody(HttpStatusCode.OK, "application/json", typeof(PagedResponse<MemberAddressResponse>))]
     public async Task<HttpResponseData> ListAddresses(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "institutions/{institutionId}/addresses")] HttpRequestData req,
-        string institutionId)
+        string institutionId,
+        FunctionContext context)
     {
+        var tenantContext = context.GetTenantRequestContext();
+        if (tenantContext is null)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Unauthorized, "Authentication is required.");
+        }
+
+        if (!tenantContext.IsPlatformAdmin &&
+            !string.IsNullOrWhiteSpace(tenantContext.InstitutionId) &&
+            !string.Equals(tenantContext.InstitutionId, institutionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Forbidden, "Not authorized to access these addresses.");
+        }
+
         var query = FunctionHttpHelpers.ParseQuery(req);
         var pageNumber = FunctionHttpHelpers.GetPositiveInt(query, "pageNumber", 1);
         var pageSize = Math.Clamp(FunctionHttpHelpers.GetPositiveInt(query, "pageSize", 50), 1, 200);
@@ -199,9 +350,23 @@ public sealed class InstitutionFunctions
     [OpenApiResponseWithBody(HttpStatusCode.Created, "application/json", typeof(MemberAddressResponse))]
     public async Task<HttpResponseData> CreateAddress(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "institutions/{institutionId}/addresses")] HttpRequestData req,
-        string institutionId)
+        string institutionId,
+        FunctionContext context)
     {
-    var payload = await MemberPropertyAlert.Functions.Extensions.HttpRequestDataExtensions.ReadJsonBodyAsync<MemberAddressRequest>(req);
+        var tenantContext = context.GetTenantRequestContext();
+        if (tenantContext is null)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Unauthorized, "Authentication is required.");
+        }
+
+        if (!tenantContext.IsPlatformAdmin &&
+            !string.IsNullOrWhiteSpace(tenantContext.InstitutionId) &&
+            !string.Equals(tenantContext.InstitutionId, institutionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Forbidden, "Not authorized to manage addresses for this institution.");
+        }
+
+        var payload = await MemberPropertyAlert.Functions.Extensions.HttpRequestDataExtensions.ReadJsonBodyAsync<MemberAddressRequest>(req);
         if (payload is null)
         {
             return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, "Request body is required.");
@@ -226,6 +391,13 @@ public sealed class InstitutionFunctions
 
         var response = req.CreateResponse(HttpStatusCode.Created);
         await response.WriteJsonAsync(MapMemberAddress(result.Value));
+
+        await _auditLogger.TrackEventAsync("InstitutionAddressCreated", new Dictionary<string, string?>
+        {
+            ["institutionId"] = institutionId,
+            ["addressId"] = result.Value.Id
+        });
+
         return response;
     }
 
@@ -237,13 +409,33 @@ public sealed class InstitutionFunctions
     public async Task<HttpResponseData> DeleteAddress(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "institutions/{institutionId}/addresses/{addressId}")] HttpRequestData req,
         string institutionId,
-        string addressId)
+        string addressId,
+        FunctionContext context)
     {
+        var tenantContext = context.GetTenantRequestContext();
+        if (tenantContext is null)
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Unauthorized, "Authentication is required.");
+        }
+
+        if (!tenantContext.IsPlatformAdmin &&
+            !string.IsNullOrWhiteSpace(tenantContext.InstitutionId) &&
+            !string.Equals(tenantContext.InstitutionId, institutionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.Forbidden, "Not authorized to manage addresses for this institution.");
+        }
+
         var result = await _institutionService.RemoveAddressAsync(institutionId, addressId);
         if (result.IsFailure)
         {
             return await FunctionHttpHelpers.CreateErrorResponseAsync(req, HttpStatusCode.BadRequest, result.Error ?? "Failed to delete address.");
         }
+
+        await _auditLogger.TrackEventAsync("InstitutionAddressDeleted", new Dictionary<string, string?>
+        {
+            ["institutionId"] = institutionId,
+            ["addressId"] = addressId
+        });
 
         return req.CreateResponse(HttpStatusCode.NoContent);
     }
@@ -252,6 +444,7 @@ public sealed class InstitutionFunctions
     {
         return new InstitutionResponse(
             institution.Id,
+            institution.TenantId,
             institution.Name,
             institution.Status,
             institution.TimeZoneId,
@@ -267,6 +460,7 @@ public sealed class InstitutionFunctions
         var addresses = institution.Addresses.Select(MapMemberAddress).ToList();
         return new InstitutionResponse(
             institution.Id,
+            institution.TenantId,
             institution.Name,
             institution.Status,
             institution.TimeZoneId,

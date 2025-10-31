@@ -10,7 +10,7 @@ public interface IInstitutionService
 {
     Task<PagedResult<Institution>> ListAsync(int pageNumber, int pageSize, CancellationToken cancellationToken = default);
     Task<Result<Institution?>> GetAsync(string id, CancellationToken cancellationToken = default);
-    Task<Result<Institution>> CreateAsync(string name, string apiKeyHash, string timeZoneId, string? primaryContactEmail, CancellationToken cancellationToken = default);
+    Task<Result<Institution>> CreateAsync(string tenantId, string name, string timeZoneId, string? primaryContactEmail, CancellationToken cancellationToken = default);
     Task<Result> UpdateAsync(string id, string name, string? primaryContactEmail, Domain.Enums.InstitutionStatus status, CancellationToken cancellationToken = default);
     Task<Result> DeleteAsync(string id, CancellationToken cancellationToken = default);
     Task<Result<MemberAddress>> AddAddressAsync(string institutionId, Domain.ValueObjects.Address address, IEnumerable<string>? tags, CancellationToken cancellationToken = default);

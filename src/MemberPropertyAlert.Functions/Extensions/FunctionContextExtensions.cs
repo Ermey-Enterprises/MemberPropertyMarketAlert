@@ -1,4 +1,5 @@
 using System.Reflection;
+using MemberPropertyAlert.Functions.Security;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 
@@ -49,5 +50,15 @@ public static class FunctionContextExtensions
 
         var type = assembly.GetType(typeName);
         return type?.GetMethod(methodName);
+    }
+
+    public static TenantRequestContext? GetTenantRequestContext(this FunctionContext context)
+    {
+        if (context.Items.TryGetValue(nameof(TenantRequestContext), out var value) && value is TenantRequestContext tenantContext)
+        {
+            return tenantContext;
+        }
+
+        return null;
     }
 }

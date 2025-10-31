@@ -11,6 +11,7 @@ using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Results;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Logging;
+using MemberPropertyAlert.Functions.Security;
 
 namespace MemberPropertyAlert.Functions.Infrastructure.Repositories;
 
@@ -18,10 +19,12 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
 {
     private readonly ICosmosContainerFactory _containerFactory;
     private readonly ILogger<CosmosMemberAddressRepository> _logger;
+    private readonly ITenantRequestContextAccessor _tenantAccessor;
 
-    public CosmosMemberAddressRepository(ICosmosContainerFactory containerFactory, ILogger<CosmosMemberAddressRepository> logger)
+    public CosmosMemberAddressRepository(ICosmosContainerFactory containerFactory, ITenantRequestContextAccessor tenantAccessor, ILogger<CosmosMemberAddressRepository> logger)
     {
         _containerFactory = containerFactory;
+        _tenantAccessor = tenantAccessor;
         _logger = logger;
     }
 
@@ -29,6 +32,26 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
     {
         try
         {
+            var tenantContext = _tenantAccessor.Current;
+            if (tenantContext is null)
+            {
+                return Result<MemberAddress>.Failure("Tenant context is not available.");
+            }
+
+            if (!tenantContext.IsPlatformAdmin)
+            {
+                if (!string.Equals(tenantContext.TenantId, address.TenantId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Result<MemberAddress>.Failure("Not authorized to create addresses for a different tenant.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(tenantContext.InstitutionId) &&
+                    !string.Equals(tenantContext.InstitutionId, address.InstitutionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Result<MemberAddress>.Failure("Not authorized to manage addresses for another institution.");
+                }
+            }
+
             var container = await _containerFactory.GetAddressesContainerAsync(cancellationToken);
             var document = MemberAddressDocument.FromDomain(address);
             await container.CreateItemAsync(document, new PartitionKey(document.InstitutionId), cancellationToken: cancellationToken);
@@ -51,7 +74,14 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
         {
             var container = await _containerFactory.GetAddressesContainerAsync(cancellationToken);
             var response = await container.ReadItemAsync<MemberAddressDocument>(addressId, new PartitionKey(institutionId), cancellationToken: cancellationToken);
-            return Result<MemberAddress?>.Success(response.Resource.ToDomain());
+            var document = response.Resource;
+            if (!IsAuthorized(document))
+            {
+                _logger.LogWarning("Unauthorized access attempt for address {AddressId} in institution {InstitutionId}", addressId, institutionId);
+                return Result<MemberAddress?>.Success(null);
+            }
+
+            return Result<MemberAddress?>.Success(document.ToDomain());
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -76,12 +106,34 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
             pageSize = 50;
         }
 
+        var tenantContext = _tenantAccessor.Current;
+        if (tenantContext is null)
+        {
+            return new PagedResult<MemberAddress>(Array.Empty<MemberAddress>(), 0, pageNumber, pageSize);
+        }
+
+        if (!tenantContext.IsPlatformAdmin &&
+            !string.IsNullOrWhiteSpace(tenantContext.InstitutionId) &&
+            !string.Equals(tenantContext.InstitutionId, institutionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return new PagedResult<MemberAddress>(Array.Empty<MemberAddress>(), 0, pageNumber, pageSize);
+        }
+
         var container = await _containerFactory.GetAddressesContainerAsync(cancellationToken);
         var offset = (pageNumber - 1) * pageSize;
 
-        var queryDefinition = new QueryDefinition("SELECT * FROM c OFFSET @offset LIMIT @limit")
+        var baseQuery = tenantContext.IsPlatformAdmin
+            ? "SELECT * FROM c OFFSET @offset LIMIT @limit"
+            : "SELECT * FROM c WHERE c.tenantId = @tenantId OFFSET @offset LIMIT @limit";
+
+        var queryDefinition = new QueryDefinition(baseQuery)
             .WithParameter("@offset", offset)
             .WithParameter("@limit", pageSize);
+
+        if (!tenantContext.IsPlatformAdmin)
+        {
+            queryDefinition = queryDefinition.WithParameter("@tenantId", tenantContext.TenantId);
+        }
 
         var iterator = container.GetItemQueryIterator<MemberAddressDocument>(
             queryDefinition,
@@ -95,11 +147,16 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
         while (iterator.HasMoreResults)
         {
             var response = await iterator.ReadNextAsync(cancellationToken);
-            documents.AddRange(response.Resource);
+            documents.AddRange(response.Resource.Where(IsAuthorized));
         }
 
+        var countQuery = tenantContext.IsPlatformAdmin
+            ? new QueryDefinition("SELECT VALUE COUNT(1) FROM c")
+            : new QueryDefinition("SELECT VALUE COUNT(1) FROM c WHERE c.tenantId = @tenantId")
+                .WithParameter("@tenantId", tenantContext.TenantId);
+
         var countIterator = container.GetItemQueryIterator<int>(
-            new QueryDefinition("SELECT VALUE COUNT(1) FROM c"),
+            countQuery,
             requestOptions: new QueryRequestOptions
             {
                 PartitionKey = new PartitionKey(institutionId)
@@ -125,9 +182,24 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
 
         try
         {
+            var tenantContext = _tenantAccessor.Current;
+            if (tenantContext is null)
+            {
+                return Array.Empty<MemberAddress>();
+            }
+
             var container = await _containerFactory.GetAddressesContainerAsync(cancellationToken);
-            var queryDefinition = new QueryDefinition("SELECT * FROM c WHERE STRINGEQUALS(c.address.stateOrProvince, @state, true)")
+            var baseQuery = tenantContext.IsPlatformAdmin
+                ? "SELECT * FROM c WHERE STRINGEQUALS(c.address.stateOrProvince, @state, true)"
+                : "SELECT * FROM c WHERE STRINGEQUALS(c.address.stateOrProvince, @state, true) AND c.tenantId = @tenantId";
+
+            var queryDefinition = new QueryDefinition(baseQuery)
                 .WithParameter("@state", stateOrProvince);
+
+            if (!tenantContext.IsPlatformAdmin)
+            {
+                queryDefinition = queryDefinition.WithParameter("@tenantId", tenantContext.TenantId);
+            }
 
             var iterator = container.GetItemQueryIterator<MemberAddressDocument>(queryDefinition);
             var documents = new List<MemberAddressDocument>();
@@ -135,7 +207,7 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
             while (iterator.HasMoreResults)
             {
                 var response = await iterator.ReadNextAsync(cancellationToken);
-                documents.AddRange(response.Resource);
+                documents.AddRange(response.Resource.Where(IsAuthorized));
             }
 
             return documents.Select(d => d.ToDomain()).ToList();
@@ -152,6 +224,24 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
         if (addresses.Count == 0)
         {
             return Result.Success();
+        }
+
+        var tenantContext = _tenantAccessor.Current;
+        if (tenantContext is null)
+        {
+            return Result.Failure("Tenant context is not available.");
+        }
+
+        if (!tenantContext.IsPlatformAdmin &&
+            !string.IsNullOrWhiteSpace(tenantContext.InstitutionId) &&
+            !string.Equals(tenantContext.InstitutionId, institutionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result.Failure("Not authorized to manage addresses for this institution.");
+        }
+
+        if (!tenantContext.IsPlatformAdmin && addresses.Any(address => !string.Equals(address.TenantId, tenantContext.TenantId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return Result.Failure("Bulk addresses must belong to the current tenant.");
         }
 
         try
@@ -190,6 +280,28 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
         try
         {
             var container = await _containerFactory.GetAddressesContainerAsync(cancellationToken);
+            var tenantContext = _tenantAccessor.Current;
+            if (tenantContext is null)
+            {
+                return Result.Failure("Tenant context is not available.");
+            }
+
+            if (!tenantContext.IsPlatformAdmin)
+            {
+                try
+                {
+                    var existing = await container.ReadItemAsync<MemberAddressDocument>(addressId, new PartitionKey(institutionId), cancellationToken: cancellationToken);
+                    if (!IsAuthorized(existing.Resource))
+                    {
+                        return Result.Failure("Not authorized to delete this address.");
+                    }
+                }
+                catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+                {
+                    return Result.Success();
+                }
+            }
+
             await container.DeleteItemAsync<MemberAddressDocument>(addressId, new PartitionKey(institutionId), cancellationToken: cancellationToken);
             return Result.Success();
         }
@@ -204,9 +316,37 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
         }
     }
 
+    private bool IsAuthorized(MemberAddressDocument document)
+    {
+        var context = _tenantAccessor.Current;
+        if (context is null)
+        {
+            return false;
+        }
+
+        if (context.IsPlatformAdmin)
+        {
+            return true;
+        }
+
+        if (!string.Equals(context.TenantId, document.TenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(context.InstitutionId) &&
+            !string.Equals(context.InstitutionId, document.InstitutionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     private sealed class MemberAddressDocument
     {
         public string Id { get; set; } = default!;
+        public string TenantId { get; set; } = default!;
         public string InstitutionId { get; set; } = default!;
         public bool IsActive { get; set; }
         public DateTimeOffset CreatedAtUtc { get; set; }
@@ -221,6 +361,7 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
             return new MemberAddressDocument
             {
                 Id = address.Id,
+                TenantId = address.TenantId,
                 InstitutionId = address.InstitutionId,
                 IsActive = address.IsActive,
                 CreatedAtUtc = address.CreatedAtUtc,
@@ -235,7 +376,7 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
         public MemberAddress ToDomain()
         {
             var valueObject = Address.ToValueObject();
-            return MemberAddress.Rehydrate(Id, InstitutionId, valueObject, Tags, IsActive, CreatedAtUtc, UpdatedAtUtc, LastMatchedAtUtc, LastMatchedListingId);
+            return MemberAddress.Rehydrate(Id, TenantId, InstitutionId, valueObject, Tags, IsActive, CreatedAtUtc, UpdatedAtUtc, LastMatchedAtUtc, LastMatchedListingId);
         }
     }
 

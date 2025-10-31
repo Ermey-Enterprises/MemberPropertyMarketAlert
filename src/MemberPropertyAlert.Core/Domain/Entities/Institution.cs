@@ -10,18 +10,18 @@ public sealed class Institution : AggregateRoot
 {
     private readonly List<MemberAddress> _addresses = new();
 
+    public string TenantId { get; private set; }
     public string Name { get; private set; }
     public string NormalizedName => Name.ToUpperInvariant();
     public InstitutionStatus Status { get; private set; }
-    public string ApiKeyHash { get; private set; }
     public IReadOnlyCollection<MemberAddress> Addresses => _addresses.AsReadOnly();
     public string TimeZoneId { get; private set; }
     public string? PrimaryContactEmail { get; private set; }
 
     private Institution(
         string id,
+        string tenantId,
         string name,
-        string apiKeyHash,
         string timeZoneId,
         InstitutionStatus status,
         string? primaryContactEmail,
@@ -29,8 +29,8 @@ public sealed class Institution : AggregateRoot
         DateTimeOffset? updatedAtUtc = null)
         : base(id, createdAtUtc, updatedAtUtc)
     {
+        TenantId = tenantId;
         Name = name;
-        ApiKeyHash = apiKeyHash;
         TimeZoneId = timeZoneId;
         Status = status;
         PrimaryContactEmail = primaryContactEmail;
@@ -38,8 +38,8 @@ public sealed class Institution : AggregateRoot
 
     public static Institution Rehydrate(
         string id,
+        string tenantId,
         string name,
-        string apiKeyHash,
         string timeZoneId,
         InstitutionStatus status,
         string? primaryContactEmail,
@@ -47,7 +47,7 @@ public sealed class Institution : AggregateRoot
         DateTimeOffset updatedAtUtc,
         IEnumerable<MemberAddress>? addresses)
     {
-        var institution = new Institution(id, name, apiKeyHash, timeZoneId, status, primaryContactEmail, createdAtUtc, updatedAtUtc);
+        var institution = new Institution(id, tenantId, name, timeZoneId, status, primaryContactEmail, createdAtUtc, updatedAtUtc);
         if (addresses is not null)
         {
             foreach (var address in addresses)
@@ -61,20 +61,20 @@ public sealed class Institution : AggregateRoot
 
     public static Result<Institution> Create(
         string id,
+        string tenantId,
         string name,
-        string apiKeyHash,
         string timeZoneId,
         InstitutionStatus status = InstitutionStatus.Active,
         string? primaryContactEmail = null)
     {
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            return Result<Institution>.Failure("Tenant id is required for institutions.");
+        }
+
         if (string.IsNullOrWhiteSpace(name))
         {
             return Result<Institution>.Failure("Institution name is required.");
-        }
-
-        if (string.IsNullOrWhiteSpace(apiKeyHash))
-        {
-            return Result<Institution>.Failure("Institution API key hash is required.");
         }
 
         if (string.IsNullOrWhiteSpace(timeZoneId))
@@ -91,7 +91,7 @@ public sealed class Institution : AggregateRoot
             return Result<Institution>.Failure($"Time zone '{timeZoneId}' is not recognized.");
         }
 
-        return Result<Institution>.Success(new Institution(id, name.Trim(), apiKeyHash.Trim(), timeZoneId, status, primaryContactEmail?.Trim()));
+        return Result<Institution>.Success(new Institution(id, tenantId.Trim(), name.Trim(), timeZoneId, status, primaryContactEmail?.Trim()));
     }
 
     public Result<MemberAddress> AddAddress(MemberAddress address)
@@ -138,15 +138,4 @@ public sealed class Institution : AggregateRoot
         return Result.Success();
     }
 
-    public Result RotateApiKey(string newApiKeyHash)
-    {
-        if (string.IsNullOrWhiteSpace(newApiKeyHash))
-        {
-            return Result.Failure("New API key hash cannot be empty.");
-        }
-
-        ApiKeyHash = newApiKeyHash.Trim();
-        Touch();
-        return Result.Success();
-    }
 }

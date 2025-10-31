@@ -6,8 +6,8 @@ using MemberPropertyAlert.Core.Domain.ValueObjects;
 namespace MemberPropertyAlert.Functions.Models;
 
 public sealed record CreateInstitutionRequest(
+    string TenantId,
     string Name,
-    string ApiKeyHash,
     string TimeZoneId,
     string? PrimaryContactEmail);
 
@@ -64,6 +64,7 @@ public sealed record AddressResponse(
 
 public sealed record InstitutionResponse(
     string Id,
+    string TenantId,
     string Name,
     InstitutionStatus Status,
     string TimeZoneId,

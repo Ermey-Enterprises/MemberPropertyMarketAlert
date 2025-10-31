@@ -1,5 +1,7 @@
 using System;
 using System.Reflection;
+using Azure.Core;
+using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using MemberPropertyAlert.Core.Abstractions.Integrations;
 using MemberPropertyAlert.Core.Abstractions.Messaging;
@@ -11,7 +13,10 @@ using MemberPropertyAlert.Functions.Configuration;
 using MemberPropertyAlert.Functions.Extensions;
 using MemberPropertyAlert.Functions.Infrastructure.Integrations;
 using MemberPropertyAlert.Functions.Infrastructure.Repositories;
+using MemberPropertyAlert.Functions.Infrastructure.Secrets;
+using MemberPropertyAlert.Functions.Infrastructure.Telemetry;
 using MemberPropertyAlert.Functions.Middleware;
+using MemberPropertyAlert.Functions.Security;
 using MemberPropertyAlert.Functions.SignalR;
 using Microsoft.ApplicationInsights.WorkerService;
 using Microsoft.Azure.Cosmos;
@@ -33,7 +38,7 @@ var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults(worker =>
     {
         worker.UseMiddleware<ExceptionHandlingMiddleware>();
-        worker.UseMiddleware<ApiKeyAuthenticationMiddleware>();
+        worker.UseMiddleware<TenantAuthenticationMiddleware>();
         worker.UseMiddleware<ProblemDetailsMiddleware>();
     })
     .ConfigureServices((context, services) =>
@@ -44,25 +49,53 @@ var host = new HostBuilder()
         services.Configure<RentCastOptions>(configuration.GetSection(RentCastOptions.SectionName));
         services.Configure<CosmosOptions>(configuration.GetSection(CosmosOptions.SectionName));
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
-        services.Configure<ApiKeyOptions>(configuration.GetSection(ApiKeyOptions.SectionName));
+        services.Configure<ServiceBusOptions>(configuration.GetSection(ServiceBusOptions.SectionName));
+        services.Configure<TenantAuthenticationOptions>(configuration.GetSection(TenantAuthenticationOptions.SectionName));
+        services.Configure<KeyVaultOptions>(configuration.GetSection(KeyVaultOptions.SectionName));
         services.Configure<SignalROptions>(configuration.GetSection(SignalROptions.SectionName));
+
+        services.AddSingleton<TokenCredential>(_ =>
+        {
+            var options = new DefaultAzureCredentialOptions
+            {
+                ExcludeInteractiveBrowserCredential = true
+            };
+
+            return new DefaultAzureCredential(options);
+        });
+
+        services.AddSingleton<ITenantRequestContextAccessor, TenantRequestContextAccessor>();
+        services.AddSingleton<ISecretProvider, KeyVaultSecretProvider>();
+    services.AddSingleton<IAuditLogger, AuditLogger>();
 
         services.AddSingleton(sp =>
         {
             var cosmosOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<CosmosOptions>>().Value;
-            if (string.IsNullOrWhiteSpace(cosmosOptions.ConnectionString))
+            var secretProvider = sp.GetRequiredService<ISecretProvider>();
+            var credential = sp.GetRequiredService<TokenCredential>();
+            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("CosmosClientFactory");
+
+            var connectionString = cosmosOptions.ConnectionString;
+            if (string.IsNullOrWhiteSpace(connectionString) && !string.IsNullOrWhiteSpace(cosmosOptions.ConnectionStringSecretName))
             {
-                throw new InvalidOperationException("Cosmos connection string is not configured. Set Cosmos:ConnectionString in local.settings.json.");
+                connectionString = secretProvider.GetSecretAsync(cosmosOptions.ConnectionStringSecretName).GetAwaiter().GetResult();
             }
 
-            return new CosmosClient(cosmosOptions.ConnectionString);
+            if (!string.IsNullOrWhiteSpace(connectionString))
+            {
+                return new CosmosClient(connectionString);
+            }
+
+            if (!string.IsNullOrWhiteSpace(cosmosOptions.AccountEndpoint))
+            {
+                logger.LogInformation("Creating CosmosClient using managed identity for endpoint {Endpoint}", cosmosOptions.AccountEndpoint);
+                return new CosmosClient(cosmosOptions.AccountEndpoint, credential);
+            }
+
+            throw new InvalidOperationException("Cosmos configuration requires either a connection string or account endpoint.");
         });
 
-        var serviceBusConnection = configuration.GetConnectionString("ServiceBus") ?? configuration["ServiceBus:ConnectionString"];
-        if (!string.IsNullOrWhiteSpace(serviceBusConnection))
-        {
-            services.AddSingleton(new ServiceBusClient(serviceBusConnection));
-        }
+        services.AddSingleton<IServiceBusClientAccessor, ServiceBusClientAccessor>();
 
         services.AddSingleton<ICosmosContainerFactory, CosmosContainerFactory>();
         services.AddScoped<IInstitutionRepository, CosmosInstitutionRepository>();
@@ -80,7 +113,8 @@ var host = new HostBuilder()
         services.AddSingleton<ILogStreamPublisher, SignalRLogStreamPublisher>();
         services.AddSingleton<IAlertPublisher>(sp =>
         {
-            var client = sp.GetService<ServiceBusClient>();
+            var clientAccessor = sp.GetRequiredService<IServiceBusClientAccessor>();
+            var client = clientAccessor.Client;
             var webhookClient = sp.GetRequiredService<IWebhookClient>();
             var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<NotificationOptions>>();
             var logger = sp.GetRequiredService<ILogger<ServiceBusAlertPublisher>>();

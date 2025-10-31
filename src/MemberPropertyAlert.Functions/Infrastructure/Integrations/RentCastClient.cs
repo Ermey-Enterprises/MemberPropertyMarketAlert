@@ -9,6 +9,7 @@ using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Models;
 using MemberPropertyAlert.Core.Options;
 using MemberPropertyAlert.Core.Results;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -19,28 +20,50 @@ public sealed class RentCastClient : IRentCastClient
     private readonly HttpClient _httpClient;
     private readonly RentCastOptions _options;
     private readonly ILogger<RentCastClient> _logger;
+    private readonly IHostEnvironment _environment;
 
-    public RentCastClient(HttpClient httpClient, IOptions<RentCastOptions> options, ILogger<RentCastClient> logger)
+    public RentCastClient(HttpClient httpClient, IOptions<RentCastOptions> options, IHostEnvironment environment, ILogger<RentCastClient> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _environment = environment;
         _logger = logger;
 
-        if (!string.IsNullOrWhiteSpace(_options.BaseUrl))
+        ConfigureClient();
+    }
+
+    private void ConfigureClient()
+    {
+        var isProduction = string.Equals(_environment.EnvironmentName, "Production", StringComparison.OrdinalIgnoreCase);
+        var useMock = !isProduction && _options.UseMockInNonProduction && !string.IsNullOrWhiteSpace(_options.MockBaseUrl);
+
+        var baseUrl = useMock
+            ? _options.MockBaseUrl
+            : _options.BaseUrl;
+
+        if (string.IsNullOrWhiteSpace(baseUrl))
         {
-            _httpClient.BaseAddress = new Uri(_options.BaseUrl);
+            throw new InvalidOperationException("RentCast base URL is not configured.");
         }
+
+        _httpClient.BaseAddress = new Uri(baseUrl, UriKind.Absolute);
 
         if (_options.Timeout > TimeSpan.Zero)
         {
             _httpClient.Timeout = _options.Timeout;
         }
 
-        if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+        var apiKey = useMock
+            ? (!string.IsNullOrWhiteSpace(_options.MockApiKey) ? _options.MockApiKey : _options.ApiKey)
+            : _options.ApiKey;
+
+        _httpClient.DefaultRequestHeaders.Remove("X-Api-Key");
+        if (!string.IsNullOrWhiteSpace(apiKey))
         {
-            _httpClient.DefaultRequestHeaders.Remove("X-Api-Key");
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Api-Key", _options.ApiKey);
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Api-Key", apiKey);
         }
+
+        _logger.LogInformation("RentCast client configured for {Mode} at {BaseAddress}", useMock ? "mock" : "production", _httpClient.BaseAddress);
     }
 
     public async Task<Result<IReadOnlyCollection<RentCastListing>>> GetListingsAsync(string stateOrProvince, CancellationToken cancellationToken = default)

@@ -9,6 +9,7 @@ public sealed class MemberAddress : Entity
 {
     private readonly HashSet<string> _tags = new(StringComparer.OrdinalIgnoreCase);
 
+    public string TenantId { get; }
     public string InstitutionId { get; }
     public Address Address { get; private set; }
     public bool IsActive { get; private set; }
@@ -18,6 +19,7 @@ public sealed class MemberAddress : Entity
 
     private MemberAddress(
         string id,
+    string tenantId,
         string institutionId,
         Address address,
         bool isActive,
@@ -28,6 +30,7 @@ public sealed class MemberAddress : Entity
         DateTimeOffset? updatedAtUtc = null)
         : base(id, createdAtUtc, updatedAtUtc)
     {
+        TenantId = tenantId;
         InstitutionId = institutionId;
         Address = address;
         IsActive = isActive;
@@ -45,21 +48,28 @@ public sealed class MemberAddress : Entity
 
     public static Result<MemberAddress> Create(
         string id,
+        string tenantId,
         string institutionId,
         Address address,
         IEnumerable<string>? tags = null,
         bool isActive = true)
     {
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            return Result<MemberAddress>.Failure("Tenant id is required for addresses.");
+        }
+
         if (string.IsNullOrWhiteSpace(institutionId))
         {
             return Result<MemberAddress>.Failure("Institution id is required.");
         }
 
-        return Result<MemberAddress>.Success(new MemberAddress(id, institutionId, address, isActive, tags, null, null));
+        return Result<MemberAddress>.Success(new MemberAddress(id, tenantId.Trim(), institutionId, address, isActive, tags, null, null));
     }
 
     public static MemberAddress Rehydrate(
         string id,
+        string tenantId,
         string institutionId,
         Address address,
         IEnumerable<string>? tags,
@@ -69,7 +79,7 @@ public sealed class MemberAddress : Entity
         DateTimeOffset? lastMatchedAtUtc,
         string? lastMatchedListingId)
     {
-        return new MemberAddress(id, institutionId, address, isActive, tags, lastMatchedAtUtc, lastMatchedListingId, createdAtUtc, updatedAtUtc);
+        return new MemberAddress(id, tenantId, institutionId, address, isActive, tags, lastMatchedAtUtc, lastMatchedListingId, createdAtUtc, updatedAtUtc);
     }
 
     public Result Activate()
