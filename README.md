@@ -57,6 +57,11 @@ dotnet test
 ```
 The command runs unit tests for the core library plus integration and end-to-end tests for the function app. Ensure any required environment variables or local settings are present for integration scenarios.
 
+## Additional Documentation
+- [Local Quickstart](docs/quickstart-guide.md) – streamlined setup flow for restoring, building, and testing the solution.
+- [Infrastructure Overview](docs/infrastructure-overview.md) – summary of cloud resources and deployment topology.
+- [Enterprise Recommendations](docs/enterprise-recommendations.md) – roadmap of architecture, security, and operational enhancements aligned with enterprise requirements.
+
 ## Next Steps
 - Build out remaining scan orchestration, listing match, and analytics endpoints.
 - Complete SignalR and Service Bus bindings for real-time alerting.
