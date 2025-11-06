@@ -470,18 +470,29 @@ jobs:
             echo "  Environment: $ENV"
             echo "  Resource Group: $RG_NAME"
             
-            # Try to find existing function app in the resource group
-            EXISTING_FUNC_APPS=$(az functionapp list --resource-group "$RG_NAME" --query "[?contains(name, 'func-mpa-${ENV}')].name" -o tsv 2>/dev/null || echo "")
-            
-            if [ -n "$EXISTING_FUNC_APPS" ]; then
-              APP_SERVICE_NAME=$(echo "$EXISTING_FUNC_APPS" | head -n1)
-              echo "✅ Found existing function app: $APP_SERVICE_NAME"
-            else
-              # Fallback to expected naming convention with generated suffix
-              echo "🎯 Using expected naming convention with generated suffix..."
-              SUFFIX=$(openssl rand -hex 2)
-              APP_SERVICE_NAME="func-mpa-${ENV}-eus2-${SUFFIX}"
-              echo "⚠️ Generated name: $APP_SERVICE_NAME (may not exist)"
+            # Try to recover the name from the most recent successful infrastructure deployment
+            LAST_DEPLOYMENT=$(az deployment group list --resource-group "$RG_NAME" --query "[?properties.provisioningState=='Succeeded'] | [-1].name" -o tsv 2>/dev/null || echo "")
+            if [ -n "$LAST_DEPLOYMENT" ]; then
+              echo "🗂️ Using deployment outputs from: $LAST_DEPLOYMENT"
+              APP_SERVICE_NAME=$(az deployment group show --resource-group "$RG_NAME" --name "$LAST_DEPLOYMENT" --query "properties.outputs.functionAppDeployment.value.appServiceName" -o tsv 2>/dev/null || echo "")
+              if [ -n "$APP_SERVICE_NAME" ]; then
+                echo "✅ Retrieved Function App name from deployment outputs: $APP_SERVICE_NAME"
+              fi
+            fi
+
+            if [ -z "$APP_SERVICE_NAME" ]; then
+              echo "🔎 Falling back to resource group discovery..."
+              EXISTING_FUNC_APPS=$(az functionapp list --resource-group "$RG_NAME" --query "[?contains(name, 'func-mpa-${ENV}')].name" -o tsv 2>/dev/null || echo "")
+              if [ -n "$EXISTING_FUNC_APPS" ]; then
+                APP_SERVICE_NAME=$(echo "$EXISTING_FUNC_APPS" | head -n1)
+                echo "✅ Found existing function app: $APP_SERVICE_NAME"
+              else
+                # Fallback to expected naming convention with generated suffix
+                echo "🎯 Using expected naming convention with generated suffix..."
+                SUFFIX=$(openssl rand -hex 2)
+                APP_SERVICE_NAME="func-mpa-${ENV}-eus2-${SUFFIX}"
+                echo "⚠️ Generated name: $APP_SERVICE_NAME (may not exist)"
+              fi
             fi
           fi
           
