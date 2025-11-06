@@ -14,6 +14,13 @@ The Member Property Market Alert platform runs on Azure services. This guide doc
 | **Application Insights** | Captures structured telemetry and traces from the isolated worker. | Instrumentation key is consumed through the standard `APPLICATIONINSIGHTS_CONNECTION_STRING` setting. |
 | **Azure Key Vault** (recommended) | Stores API keys, connection strings, and webhook secrets. | Integrate with Function App using managed identity and Key Vault references. |
 
+### Tenant-scoped alert metadata
+
+- **Service Bus messages** now carry tenant-aware subjects and application properties. Each listing match message uses a subject pattern of `listing-match:{tenantId}` when a single tenant is involved (falling back to `listing-match:multi-tenant` otherwise) and exposes `tenantId`, `tenantIds`, and `institutionIds` properties so downstream processors or rules can filter without inspecting the payload body.
+- **Webhook notifications** enrich the JSON payload with `tenantIds` and `institutionIds` arrays, enabling consumers to route alerts by tenancy metadata.
+
+Consumers that subscribe to alerts should update filters or routing rules to leverage these properties—for example, by binding Service Bus subscriptions to `tenantId = '<tenant>'` or by checking the webhook payload arrays before surfacing notifications in tenant-specific channels.
+
 ## Configuration Reference
 
 Populate these settings in each environment through the Function App configuration (or `local.settings.json` when running locally).

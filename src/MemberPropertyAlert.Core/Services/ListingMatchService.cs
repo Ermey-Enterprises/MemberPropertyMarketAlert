@@ -9,6 +9,7 @@ using MemberPropertyAlert.Core.Abstractions.Repositories;
 using MemberPropertyAlert.Core.Abstractions.Services;
 using MemberPropertyAlert.Core.Domain.Entities;
 using MemberPropertyAlert.Core.Domain.Enums;
+using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Models;
 using MemberPropertyAlert.Core.Results;
 using Microsoft.Extensions.Logging;
@@ -37,7 +38,10 @@ public sealed class ListingMatchService : IListingMatchService
         _logger = logger;
     }
 
-    public async Task<Result<IReadOnlyCollection<ListingMatch>>> FindMatchesAsync(string stateOrProvince, CancellationToken cancellationToken = default)
+    public async Task<Result<IReadOnlyCollection<ListingMatch>>> FindMatchesAsync(
+        string stateOrProvince,
+        IReadOnlyCollection<TenantInstitutionScope> scopes,
+        CancellationToken cancellationToken = default)
     {
         var listingsResult = await _rentCastClient.GetListingsAsync(stateOrProvince, cancellationToken);
         if (listingsResult.IsFailure)
@@ -46,24 +50,52 @@ public sealed class ListingMatchService : IListingMatchService
         }
 
         var listings = listingsResult.Value ?? Array.Empty<RentCastListing>();
-        var addresses = await _memberAddressRepository.ListByStateAsync(stateOrProvince, cancellationToken);
         var matches = new List<ListingMatch>();
 
-        foreach (var listing in listings)
+        if (scopes.Count == 0)
         {
-            var matchedAddresses = addresses
-                .Where(a => a.IsActive && IsPotentialMatch(a, listing))
-                .Select(a => a.Id)
-                .ToArray();
+            _logger.LogInformation("No tenant scopes available for matching in {State}", stateOrProvince);
+            return Result<IReadOnlyCollection<ListingMatch>>.Success(matches);
+        }
 
-            if (matchedAddresses.Length == 0)
+        foreach (var scope in scopes)
+        {
+            var addresses = await _memberAddressRepository.ListByStateAsync(
+                stateOrProvince,
+                scope.TenantId,
+                scope.InstitutionId,
+                cancellationToken);
+
+            if (addresses.Count == 0)
             {
                 continue;
             }
 
-            var severity = DetermineSeverity(listing);
-            var match = ListingMatch.Create(Guid.NewGuid().ToString("N"), listing.ListingId, listing.Address, listing.MonthlyRent, listing.ListingUrl, severity, matchedAddresses, DateTimeOffset.UtcNow, listing.Region);
-            matches.Add(match);
+            foreach (var listing in listings)
+            {
+                var matchedAddresses = addresses
+                    .Where(a => a.IsActive && IsPotentialMatch(a, listing))
+                    .Select(a => a.Id)
+                    .ToArray();
+
+                if (matchedAddresses.Length == 0)
+                {
+                    continue;
+                }
+
+                var severity = DetermineSeverity(listing);
+                var match = ListingMatch.Create(
+                    Guid.NewGuid().ToString("N"),
+                    listing.ListingId,
+                    listing.Address,
+                    listing.MonthlyRent,
+                    listing.ListingUrl,
+                    severity,
+                    matchedAddresses,
+                    DateTimeOffset.UtcNow,
+                    listing.Region);
+                matches.Add(match);
+            }
         }
 
         _logger.LogInformation("Matched {MatchCount} listings in {State}", matches.Count, stateOrProvince);
@@ -77,12 +109,53 @@ public sealed class ListingMatchService : IListingMatchService
             return Result.Success();
         }
 
+        var addressesById = await LoadAddressesForMatchesAsync(matches, cancellationToken);
+        var addressesToPersist = new Dictionary<string, Dictionary<string, MemberAddress>>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var match in matches)
         {
+            var matchedAddresses = match.MatchedAddressIds
+                .Select(id => addressesById.TryGetValue(id, out var address) ? address : null)
+                .Where(address => address is not null)
+                .Cast<MemberAddress>()
+                .ToList();
+
+            if (matchedAddresses.Count == 0)
+            {
+                _logger.LogWarning("No address metadata found for match {MatchId}", match.Id);
+            }
+            else
+            {
+                match.SetTenancyDetails(
+                    matchedAddresses.Select(address => address.TenantId),
+                    matchedAddresses.Select(address => address.InstitutionId));
+
+                foreach (var address in matchedAddresses)
+                {
+                    address.RecordMatch(match.ListingId, match.DetectedAtUtc);
+                    if (!addressesToPersist.TryGetValue(address.InstitutionId, out var bucket))
+                    {
+                        bucket = new Dictionary<string, MemberAddress>(StringComparer.OrdinalIgnoreCase);
+                        addressesToPersist[address.InstitutionId] = bucket;
+                    }
+
+                    bucket[address.Id] = address;
+                }
+            }
+
             var createResult = await _listingMatchRepository.CreateAsync(match, cancellationToken);
             if (createResult.IsFailure)
             {
                 _logger.LogWarning("Failed to persist match {MatchId}: {Error}", match.Id, createResult.Error);
+            }
+        }
+
+        foreach (var group in addressesToPersist)
+        {
+            var upsertResult = await _memberAddressRepository.UpsertBulkAsync(group.Key, group.Value.Values.ToList(), cancellationToken);
+            if (upsertResult.IsFailure)
+            {
+                _logger.LogWarning("Failed to update match history for institution {InstitutionId}: {Error}", group.Key, upsertResult.Error);
             }
         }
 
@@ -93,6 +166,27 @@ public sealed class ListingMatchService : IListingMatchService
         }
 
         return Result.Success();
+    }
+
+    private async Task<Dictionary<string, MemberAddress>> LoadAddressesForMatchesAsync(IReadOnlyCollection<ListingMatch> matches, CancellationToken cancellationToken)
+    {
+        var lookup = new Dictionary<string, MemberAddress>(StringComparer.OrdinalIgnoreCase);
+        var states = matches
+            .Select(match => match.ListingAddress.StateOrProvince)
+            .Where(state => !string.IsNullOrWhiteSpace(state))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var state in states)
+        {
+            var addresses = await _memberAddressRepository.ListByStateAsync(state, cancellationToken);
+            foreach (var address in addresses)
+            {
+                lookup[address.Id] = address;
+            }
+        }
+
+        return lookup;
     }
 
     public Task<PagedResult<ListingMatch>> GetRecentMatchesAsync(string? institutionId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)

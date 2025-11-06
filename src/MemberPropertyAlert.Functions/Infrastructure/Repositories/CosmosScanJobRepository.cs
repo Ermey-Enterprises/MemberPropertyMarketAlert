@@ -8,6 +8,7 @@ using MemberPropertyAlert.Core.Abstractions.Integrations;
 using MemberPropertyAlert.Core.Abstractions.Repositories;
 using MemberPropertyAlert.Core.Domain.Entities;
 using MemberPropertyAlert.Core.Domain.Enums;
+using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Results;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Logging;
@@ -160,7 +161,7 @@ public sealed class CosmosScanJobRepository : IScanJobRepository
     {
         public string Id { get; set; } = default!;
         public string StateOrProvince { get; set; } = default!;
-        public string[] InstitutionIds { get; set; } = Array.Empty<string>();
+        public ScopeDocument[] Cohorts { get; set; } = Array.Empty<ScopeDocument>();
         public ScanStatus Status { get; set; }
         public DateTimeOffset CreatedAtUtc { get; set; }
         public DateTimeOffset UpdatedAtUtc { get; set; }
@@ -174,7 +175,13 @@ public sealed class CosmosScanJobRepository : IScanJobRepository
             {
                 Id = scanJob.Id,
                 StateOrProvince = scanJob.StateOrProvince,
-                InstitutionIds = scanJob.InstitutionIds.ToArray(),
+                Cohorts = scanJob.Cohorts
+                    .Select(scope => new ScopeDocument
+                    {
+                        TenantId = scope.TenantId,
+                        InstitutionId = scope.InstitutionId
+                    })
+                    .ToArray(),
                 Status = scanJob.Status,
                 CreatedAtUtc = scanJob.CreatedAtUtc,
                 UpdatedAtUtc = scanJob.UpdatedAtUtc,
@@ -189,13 +196,19 @@ public sealed class CosmosScanJobRepository : IScanJobRepository
             return ScanJob.Rehydrate(
                 Id,
                 StateOrProvince,
-                InstitutionIds,
+                Cohorts.Select(scope => new TenantInstitutionScope(scope.TenantId, scope.InstitutionId)),
                 Status,
                 CreatedAtUtc,
                 UpdatedAtUtc,
                 StartedAtUtc,
                 CompletedAtUtc,
                 FailureReason);
+        }
+
+        public sealed class ScopeDocument
+        {
+            public string TenantId { get; set; } = default!;
+            public string InstitutionId { get; set; } = default!;
         }
     }
 }

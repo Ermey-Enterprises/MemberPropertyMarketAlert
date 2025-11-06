@@ -244,6 +244,42 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
         }
     }
 
+    public async Task<Result<IReadOnlyCollection<TenantInstitutionScope>>> ListActiveScopesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var container = await _containerFactory.GetInstitutionsContainerAsync(cancellationToken);
+            var queryDefinition = new QueryDefinition("SELECT c.id, c.tenantId FROM c WHERE c.status = @status")
+                .WithParameter("@status", (int)InstitutionStatus.Active);
+
+            var iterator = container.GetItemQueryIterator<ActiveInstitutionScopeDocument>(queryDefinition);
+            var scopes = new List<TenantInstitutionScope>();
+
+            while (iterator.HasMoreResults)
+            {
+                var response = await iterator.ReadNextAsync(cancellationToken);
+                foreach (var document in response.Resource)
+                {
+                    try
+                    {
+                        scopes.Add(new TenantInstitutionScope(document.TenantId, document.Id));
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        _logger.LogWarning(ex, "Skipping invalid scope for institution {InstitutionId}", document.Id);
+                    }
+                }
+            }
+
+            return Result<IReadOnlyCollection<TenantInstitutionScope>>.Success(scopes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to list active institution scopes");
+            return Result<IReadOnlyCollection<TenantInstitutionScope>>.Failure(ex.Message);
+        }
+    }
+
     private bool IsAuthorizedForTenant(string tenantId)
     {
         var context = _tenantAccessor.Current;
@@ -262,9 +298,9 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
 
     private sealed class InstitutionDocument
     {
-    public string Id { get; set; } = default!;
-    public string TenantId { get; set; } = default!;
-    public string PartitionKey => Id;
+        public string Id { get; set; } = default!;
+        public string TenantId { get; set; } = default!;
+        public string PartitionKey => Id;
     public string Name { get; set; } = default!;
         public string TimeZoneId { get; set; } = default!;
         public InstitutionStatus Status { get; set; }
@@ -353,5 +389,11 @@ public sealed class CosmosInstitutionRepository : IInstitutionRepository
             GeoCoordinate? coordinate = Latitude.HasValue && Longitude.HasValue ? GeoCoordinate.Create(Latitude.Value, Longitude.Value) : null;
             return Address.Create(Line1, Line2, City, StateOrProvince, PostalCode, CountryCode, coordinate);
         }
+    }
+
+    private sealed class ActiveInstitutionScopeDocument
+    {
+        public string Id { get; set; } = default!;
+        public string TenantId { get; set; } = default!;
     }
 }
