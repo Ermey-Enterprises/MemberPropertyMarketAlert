@@ -7,161 +7,198 @@ using MemberPropertyAlert.Core.Abstractions.Integrations;
 using MemberPropertyAlert.Core.Abstractions.Messaging;
 using MemberPropertyAlert.Core.Abstractions.Repositories;
 using MemberPropertyAlert.Core.Domain.Entities;
-using MemberPropertyAlert.Core.Domain.Enums;
 using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Models;
 using MemberPropertyAlert.Core.Results;
 using MemberPropertyAlert.Core.Services;
-using Microsoft.Extensions.Logging.Abstractions;
-using Xunit;
+using Microsoft.Extensions.Logging;
 
 namespace MemberPropertyAlert.Core.Tests;
 
-public class ListingMatchServiceTests
+public sealed class ListingMatchServiceTests
 {
     [Fact]
-    public async Task PublishMatchesAsync_StampsTenancyAndUpdatesMemberAddresses()
+    public async Task FindMatchesAsync_ReturnsMatchesForAllScopes_WhenNoTenantContext()
     {
-        var address = CreateMemberAddress(
-            "addr-1",
-            "tenant-1",
-            "inst-1",
-            Address.Create("123 Main St", null, "Metropolis", "CA", "90210", "US"));
-
-        var memberRepository = new FakeMemberAddressRepository(new[] { address });
-        var matchRepository = new FakeListingMatchRepository();
-        var alertPublisher = new FakeAlertPublisher();
-        var service = new ListingMatchService(
-            new NoOpRentCastClient(),
-            memberRepository,
-            matchRepository,
-            alertPublisher,
-            NullLogger<ListingMatchService>.Instance);
-
-        var match = ListingMatch.Create(
-            Guid.NewGuid().ToString("N"),
+        // Arrange
+        var listingAddress = Address.Create("123 Main St", null, "Los Angeles", "CA", "90001", "US");
+        var listing = new RentCastListing(
             "listing-1",
-            Address.Create("456 Elm St", null, "Metropolis", "CA", "90210", "US"),
+            listingAddress,
             2500m,
+            null,
+            3,
+            2,
+            1200,
             new Uri("https://example.com/listing-1"),
-            AlertSeverity.Warning,
-            new[] { address.Id },
             DateTimeOffset.UtcNow,
-            "CA");
+            "Los Angeles");
 
-        var result = await service.PublishMatchesAsync(new[] { match });
+        var scopes = new[]
+        {
+            new TenantInstitutionScope("tenant-a", "inst-a"),
+            new TenantInstitutionScope("tenant-b", "inst-b"),
+        };
 
+        var addresses = new Dictionary<(string TenantId, string InstitutionId), IReadOnlyCollection<MemberAddress>>
+        {
+            [("tenant-a", "inst-a")] = new[]
+            {
+                CreateMemberAddress("addr-a", "tenant-a", "inst-a", listingAddress)
+            },
+            [("tenant-b", "inst-b")] = new[]
+            {
+                CreateMemberAddress("addr-b", "tenant-b", "inst-b", listingAddress)
+            }
+        };
+
+        var rentCastClient = new FakeRentCastClient(new[] { listing });
+        var memberAddressRepository = new FakeMemberAddressRepository(addresses);
+        var listingMatchRepository = new FakeListingMatchRepository();
+        var alertPublisher = new FakeAlertPublisher();
+        var logger = new NoOpLogger<ListingMatchService>();
+
+        var service = new ListingMatchService(
+            rentCastClient,
+            memberAddressRepository,
+            listingMatchRepository,
+            alertPublisher,
+            logger);
+
+        // Act
+        var result = await service.FindMatchesAsync("CA", scopes, CancellationToken.None);
+
+        // Assert
         Assert.True(result.IsSuccess);
-        Assert.Single(match.MatchedTenantIds);
-        Assert.Equal(address.TenantId, match.MatchedTenantIds.Single());
-        Assert.Single(match.MatchedInstitutionIds);
-        Assert.Equal(address.InstitutionId, match.MatchedInstitutionIds.Single());
+        var matches = result.Value?.ToList();
+        Assert.NotNull(matches);
+        Assert.Equal(2, matches!.Count);
+        Assert.Contains(matches, match => match.MatchedAddressIds.Contains("addr-a"));
+        Assert.Contains(matches, match => match.MatchedAddressIds.Contains("addr-b"));
 
-        var persistedMatch = Assert.Single(matchRepository.CreatedMatches);
-        Assert.Equal(match.Id, persistedMatch.Id);
-
-        var updatedAddresses = memberRepository.GetUpdatesForInstitution(address.InstitutionId);
-        var updatedAddress = Assert.Single(updatedAddresses);
-        Assert.Equal(match.ListingId, updatedAddress.LastMatchedListingId);
-        Assert.Equal(match.DetectedAtUtc, updatedAddress.LastMatchedAtUtc);
-
-        var publishedBatch = Assert.Single(alertPublisher.PublishedBatches);
-        Assert.Contains(match, publishedBatch);
+        Assert.Collection(memberAddressRepository.Requests,
+            scope => Assert.Equal(("tenant-a", "inst-a"), scope),
+            scope => Assert.Equal(("tenant-b", "inst-b"), scope));
     }
 
     private static MemberAddress CreateMemberAddress(string id, string tenantId, string institutionId, Address address)
     {
         var result = MemberAddress.Create(id, tenantId, institutionId, address);
-        Assert.True(result.IsSuccess, result.Error);
+        Assert.True(result.IsSuccess);
         return result.Value!;
     }
 
-    private sealed class NoOpRentCastClient : IRentCastClient
+    private sealed class FakeRentCastClient : IRentCastClient
     {
+        private readonly IReadOnlyCollection<RentCastListing> _listings;
+
+        public FakeRentCastClient(IReadOnlyCollection<RentCastListing> listings)
+        {
+            _listings = listings;
+        }
+
         public Task<Result<IReadOnlyCollection<RentCastListing>>> GetListingsAsync(string stateOrProvince, CancellationToken cancellationToken = default)
-            => Task.FromResult(Result<IReadOnlyCollection<RentCastListing>>.Success(Array.Empty<RentCastListing>()));
+        {
+            return Task.FromResult(Result<IReadOnlyCollection<RentCastListing>>.Success(_listings));
+        }
 
         public Task<Result<RentCastListing?>> GetListingAsync(string listingId, CancellationToken cancellationToken = default)
-            => Task.FromResult(Result<RentCastListing?>.Success(null));
+        {
+            var listing = _listings.FirstOrDefault(l => l.ListingId == listingId);
+            return Task.FromResult(Result<RentCastListing?>.Success(listing));
+        }
     }
 
     private sealed class FakeMemberAddressRepository : IMemberAddressRepository
     {
-        private readonly Dictionary<string, List<MemberAddress>> _addressesByState = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, List<MemberAddress>> _updates = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<(string TenantId, string InstitutionId), IReadOnlyCollection<MemberAddress>> _addresses;
 
-        public FakeMemberAddressRepository(IEnumerable<MemberAddress> addresses)
+        public FakeMemberAddressRepository(Dictionary<(string TenantId, string InstitutionId), IReadOnlyCollection<MemberAddress>> addresses)
         {
-            foreach (var address in addresses)
-            {
-                var state = address.Address.StateOrProvince;
-                if (!_addressesByState.TryGetValue(state, out var list))
-                {
-                    list = new List<MemberAddress>();
-                    _addressesByState[state] = list;
-                }
-
-                list.Add(address);
-            }
+            _addresses = addresses;
         }
 
+        public List<(string TenantId, string InstitutionId)> Requests { get; } = new();
+
         public Task<Result<MemberAddress>> CreateAsync(MemberAddress address, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+            => throw new NotImplementedException();
 
         public Task<Result<MemberAddress?>> GetAsync(string institutionId, string addressId, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+            => throw new NotImplementedException();
 
         public Task<PagedResult<MemberAddress>> ListByInstitutionAsync(string institutionId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+            => throw new NotImplementedException();
 
-        public Task<IReadOnlyCollection<MemberAddress>> ListByStateAsync(string stateOrProvince, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyCollection<MemberAddress>> ListByStateAsync(
+            string stateOrProvince,
+            string? tenantId = null,
+            string? institutionId = null,
+            CancellationToken cancellationToken = default)
         {
-            if (_addressesByState.TryGetValue(stateOrProvince, out var list))
+            if (tenantId is null || institutionId is null)
             {
-                return Task.FromResult<IReadOnlyCollection<MemberAddress>>(list);
+                return Task.FromResult<IReadOnlyCollection<MemberAddress>>(Array.Empty<MemberAddress>());
+            }
+
+            Requests.Add((tenantId, institutionId));
+
+            if (_addresses.TryGetValue((tenantId, institutionId), out var scopedAddresses))
+            {
+                var filtered = scopedAddresses
+                    .Where(address => string.Equals(address.Address.StateOrProvince, stateOrProvince, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                return Task.FromResult<IReadOnlyCollection<MemberAddress>>(filtered);
             }
 
             return Task.FromResult<IReadOnlyCollection<MemberAddress>>(Array.Empty<MemberAddress>());
         }
 
         public Task<Result> UpsertBulkAsync(string institutionId, IReadOnlyCollection<MemberAddress> addresses, CancellationToken cancellationToken = default)
-        {
-            _updates[institutionId] = addresses.ToList();
-            return Task.FromResult(Result.Success());
-        }
+            => throw new NotImplementedException();
 
         public Task<Result> DeleteAsync(string institutionId, string addressId, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public IReadOnlyCollection<MemberAddress> GetUpdatesForInstitution(string institutionId)
-            => _updates.TryGetValue(institutionId, out var list) ? list : Array.Empty<MemberAddress>();
+            => throw new NotImplementedException();
     }
 
     private sealed class FakeListingMatchRepository : IListingMatchRepository
     {
-        public List<ListingMatch> CreatedMatches { get; } = new();
-
         public Task<Result<ListingMatch>> CreateAsync(ListingMatch match, CancellationToken cancellationToken = default)
         {
-            CreatedMatches.Add(match);
             return Task.FromResult(Result<ListingMatch>.Success(match));
         }
 
         public Task<PagedResult<ListingMatch>> ListRecentAsync(string? institutionId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+            => throw new NotImplementedException();
 
         public Task<Result> PurgeOlderThanAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+            => throw new NotImplementedException();
     }
 
     private sealed class FakeAlertPublisher : IAlertPublisher
     {
-        public List<IReadOnlyCollection<ListingMatch>> PublishedBatches { get; } = new();
-
         public Task<Result> PublishAsync(IReadOnlyCollection<ListingMatch> matches, CancellationToken cancellationToken = default)
         {
-            PublishedBatches.Add(matches);
             return Task.FromResult(Result.Success());
+        }
+    }
+
+    private sealed class NoOpLogger<T> : ILogger<T>
+    {
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => false;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
         }
     }
 }

@@ -9,7 +9,10 @@ namespace MemberPropertyAlert.Core.Abstractions.Services;
 
 public interface IListingMatchService
 {
-    Task<Result<IReadOnlyCollection<ListingMatch>>> FindMatchesAsync(string stateOrProvince, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyCollection<ListingMatch>>> FindMatchesAsync(
+        string stateOrProvince,
+        IReadOnlyCollection<Domain.ValueObjects.TenantInstitutionScope> scopes,
+        CancellationToken cancellationToken = default);
     Task<Result> PublishMatchesAsync(IReadOnlyCollection<ListingMatch> matches, CancellationToken cancellationToken = default);
     Task<PagedResult<ListingMatch>> GetRecentMatchesAsync(string? institutionId, int pageNumber, int pageSize, CancellationToken cancellationToken = default);
 }

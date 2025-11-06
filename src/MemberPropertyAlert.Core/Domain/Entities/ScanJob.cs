@@ -2,16 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MemberPropertyAlert.Core.Domain.Enums;
+using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Results;
 
 namespace MemberPropertyAlert.Core.Domain.Entities;
 
 public sealed class ScanJob : AggregateRoot
 {
-    private readonly List<string> _institutionIds = new();
+    private readonly List<TenantInstitutionScope> _cohorts = new();
 
     public string StateOrProvince { get; private set; }
-    public IReadOnlyCollection<string> InstitutionIds => _institutionIds.AsReadOnly();
+    public IReadOnlyCollection<TenantInstitutionScope> Cohorts => _cohorts.AsReadOnly();
     public ScanStatus Status { get; private set; }
     public DateTimeOffset? StartedAtUtc { get; private set; }
     public DateTimeOffset? CompletedAtUtc { get; private set; }
@@ -20,7 +21,7 @@ public sealed class ScanJob : AggregateRoot
     private ScanJob(
         string id,
         string stateOrProvince,
-        IEnumerable<string> institutionIds,
+        IEnumerable<TenantInstitutionScope> cohorts,
         DateTimeOffset? createdAtUtc = null,
         DateTimeOffset? updatedAtUtc = null,
         ScanStatus? status = null,
@@ -30,36 +31,39 @@ public sealed class ScanJob : AggregateRoot
         : base(id, createdAtUtc, updatedAtUtc)
     {
         StateOrProvince = stateOrProvince;
-        _institutionIds.AddRange(institutionIds);
+        _cohorts.AddRange(cohorts);
         Status = status ?? ScanStatus.Pending;
         StartedAtUtc = startedAtUtc;
         CompletedAtUtc = completedAtUtc;
         FailureReason = failureReason;
     }
 
-    public static Result<ScanJob> Create(string id, string stateOrProvince, IEnumerable<string>? institutionIds)
+    public static Result<ScanJob> Create(string id, string stateOrProvince, IEnumerable<TenantInstitutionScope>? cohorts)
     {
         if (string.IsNullOrWhiteSpace(stateOrProvince) || stateOrProvince.Length > 5)
         {
             return Result<ScanJob>.Failure("State or province must be provided using a short code.");
         }
 
-        var ids = institutionIds?.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).Distinct().ToList() ?? new List<string>();
+        var scopeList = cohorts?
+            .Where(scope => scope is not null)
+            .Distinct()
+            .ToList() ?? new List<TenantInstitutionScope>();
 
-        return Result<ScanJob>.Success(new ScanJob(id, stateOrProvince.Trim().ToUpperInvariant(), ids));
+        return Result<ScanJob>.Success(new ScanJob(id, stateOrProvince.Trim().ToUpperInvariant(), scopeList));
     }
 
     public static ScanJob Rehydrate(
         string id,
         string stateOrProvince,
-        IEnumerable<string> institutionIds,
+        IEnumerable<TenantInstitutionScope> cohorts,
         ScanStatus status,
         DateTimeOffset createdAtUtc,
         DateTimeOffset updatedAtUtc,
         DateTimeOffset? startedAtUtc,
         DateTimeOffset? completedAtUtc,
         string? failureReason)
-        => new(id, stateOrProvince, institutionIds, createdAtUtc, updatedAtUtc, status, startedAtUtc, completedAtUtc, failureReason);
+        => new(id, stateOrProvince, cohorts, createdAtUtc, updatedAtUtc, status, startedAtUtc, completedAtUtc, failureReason);
 
     public void MarkRunning()
     {
