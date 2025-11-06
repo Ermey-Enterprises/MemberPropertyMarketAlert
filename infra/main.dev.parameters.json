@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": {
+      "value": "dev"
+    },
+    "location": {
+      "value": "eastus2"
+    },
+    "appName": {
+      "value": "member-property-alert"
+    },
+    "deployFunctionApp": {
+      "value": true
+    },
+    "deployWebApp": {
+      "value": true
+    },
+    "enableAdvancedSecurity": {
+      "value": false
+    },
+    "rentCastApiKey": {
+      "value": "placeholder-dev-key"
+    },
+    "adminApiKey": {
+      "value": "placeholder-dev-admin-key"
+    },
+    "azureClientId": {
+      "value": "placeholder-dev-client-id"
+    },
+    "azureTenantId": {
+      "value": "placeholder-dev-tenant-id"
+    },
+    "azureSubscriptionId": {
+      "value": "placeholder-dev-subscription-id"
+    }
+  }
+}
