@@ -173,7 +173,11 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
         return new PagedResult<MemberAddress>(items, total, pageNumber, pageSize);
     }
 
-    public async Task<IReadOnlyCollection<MemberAddress>> ListByStateAsync(string stateOrProvince, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<MemberAddress>> ListByStateAsync(
+        string stateOrProvince,
+        string? tenantId = null,
+        string? institutionId = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(stateOrProvince))
         {
@@ -182,32 +186,78 @@ public sealed class CosmosMemberAddressRepository : IMemberAddressRepository
 
         try
         {
-            var tenantContext = _tenantAccessor.Current;
-            if (tenantContext is null)
+            var container = await _containerFactory.GetAddressesContainerAsync(cancellationToken);
+            var hasExplicitScope = !string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(institutionId);
+            var tenantContext = hasExplicitScope ? null : _tenantAccessor.Current;
+
+            if (!hasExplicitScope && tenantContext is null)
             {
                 return Array.Empty<MemberAddress>();
             }
 
-            var container = await _containerFactory.GetAddressesContainerAsync(cancellationToken);
-            var baseQuery = tenantContext.IsPlatformAdmin
-                ? "SELECT * FROM c WHERE STRINGEQUALS(c.address.stateOrProvince, @state, true)"
-                : "SELECT * FROM c WHERE STRINGEQUALS(c.address.stateOrProvince, @state, true) AND c.tenantId = @tenantId";
+            QueryDefinition queryDefinition;
+            QueryRequestOptions? requestOptions = null;
 
-            var queryDefinition = new QueryDefinition(baseQuery)
-                .WithParameter("@state", stateOrProvince);
-
-            if (!tenantContext.IsPlatformAdmin)
+            if (hasExplicitScope)
             {
-                queryDefinition = queryDefinition.WithParameter("@tenantId", tenantContext.TenantId);
+                var filters = new List<string> { "STRINGEQUALS(c.address.stateOrProvince, @state, true)" };
+                if (!string.IsNullOrWhiteSpace(tenantId))
+                {
+                    filters.Add("STRINGEQUALS(c.tenantId, @tenantId, true)");
+                }
+
+                if (!string.IsNullOrWhiteSpace(institutionId))
+                {
+                    filters.Add("STRINGEQUALS(c.institutionId, @institutionId, true)");
+                    requestOptions = new QueryRequestOptions
+                    {
+                        PartitionKey = new PartitionKey(institutionId)
+                    };
+                }
+
+                var queryText = $"SELECT * FROM c WHERE {string.Join(" AND ", filters)}";
+                queryDefinition = new QueryDefinition(queryText)
+                    .WithParameter("@state", stateOrProvince);
+
+                if (!string.IsNullOrWhiteSpace(tenantId))
+                {
+                    queryDefinition = queryDefinition.WithParameter("@tenantId", tenantId);
+                }
+
+                if (!string.IsNullOrWhiteSpace(institutionId))
+                {
+                    queryDefinition = queryDefinition.WithParameter("@institutionId", institutionId);
+                }
+            }
+            else
+            {
+                var baseQuery = tenantContext!.IsPlatformAdmin
+                    ? "SELECT * FROM c WHERE STRINGEQUALS(c.address.stateOrProvince, @state, true)"
+                    : "SELECT * FROM c WHERE STRINGEQUALS(c.address.stateOrProvince, @state, true) AND c.tenantId = @tenantId";
+
+                queryDefinition = new QueryDefinition(baseQuery)
+                    .WithParameter("@state", stateOrProvince);
+
+                if (!tenantContext.IsPlatformAdmin)
+                {
+                    queryDefinition = queryDefinition.WithParameter("@tenantId", tenantContext.TenantId);
+                }
             }
 
-            var iterator = container.GetItemQueryIterator<MemberAddressDocument>(queryDefinition);
+            var iterator = container.GetItemQueryIterator<MemberAddressDocument>(queryDefinition, requestOptions: requestOptions);
             var documents = new List<MemberAddressDocument>();
 
             while (iterator.HasMoreResults)
             {
                 var response = await iterator.ReadNextAsync(cancellationToken);
-                documents.AddRange(response.Resource.Where(IsAuthorized));
+                if (hasExplicitScope)
+                {
+                    documents.AddRange(response.Resource);
+                }
+                else
+                {
+                    documents.AddRange(response.Resource.Where(IsAuthorized));
+                }
             }
 
             return documents.Select(d => d.ToDomain()).ToList();
