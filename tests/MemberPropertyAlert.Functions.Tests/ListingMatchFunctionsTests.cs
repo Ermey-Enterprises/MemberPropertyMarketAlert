@@ -5,6 +5,7 @@ using System.Net;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Security.Claims;
 using MemberPropertyAlert.Core.Domain.Entities;
 using MemberPropertyAlert.Core.Domain.Enums;
 using MemberPropertyAlert.Core.Domain.ValueObjects;
@@ -23,14 +24,14 @@ public class ListingMatchFunctionsTests
     {
         var tenantContext = CreateTenantContext(isPlatformAdmin: false, tenantId: "tenant-a", institutionId: "institution-a");
         var functionContext = Substitute.For<FunctionContext>();
-        functionContext.Items.Returns(new Dictionary<object, object?> { [nameof(TenantRequestContext)] = tenantContext });
+        functionContext.Items.Returns(new Dictionary<object, object> { [nameof(TenantRequestContext)] = tenantContext });
 
         var request = new TestHttpRequestData(functionContext, new Uri("https://localhost/tenants/tenant-a/matches"));
 
         var listingMatch = CreateListingMatch();
         var fakeService = new FakeListingMatchService
         {
-            ResultToReturn = new PagedResult<ListingMatch>(new[] { listingMatch }, totalCount: 1, pageNumber: 1, pageSize: 50)
+            ResultToReturn = new PagedResult<ListingMatch>(new[] { listingMatch }, 1, 1, 50)
         };
 
         var functions = new ListingMatchFunctions(fakeService);
@@ -53,7 +54,7 @@ public class ListingMatchFunctionsTests
     {
         var tenantContext = CreateTenantContext(isPlatformAdmin: false, tenantId: "tenant-a", institutionId: "institution-a");
         var functionContext = Substitute.For<FunctionContext>();
-        functionContext.Items.Returns(new Dictionary<object, object?> { [nameof(TenantRequestContext)] = tenantContext });
+        functionContext.Items.Returns(new Dictionary<object, object> { [nameof(TenantRequestContext)] = tenantContext });
 
         var request = new TestHttpRequestData(functionContext, new Uri("https://localhost/tenants/tenant-b/matches"));
         var fakeService = new FakeListingMatchService();
@@ -70,12 +71,12 @@ public class ListingMatchFunctionsTests
     {
         var tenantContext = CreateTenantContext(isPlatformAdmin: true, tenantId: "platform", institutionId: null);
         var functionContext = Substitute.For<FunctionContext>();
-        functionContext.Items.Returns(new Dictionary<object, object?> { [nameof(TenantRequestContext)] = tenantContext });
+        functionContext.Items.Returns(new Dictionary<object, object> { [nameof(TenantRequestContext)] = tenantContext });
 
         var request = new TestHttpRequestData(functionContext, new Uri("https://localhost/matches"));
         var fakeService = new FakeListingMatchService
         {
-            ResultToReturn = new PagedResult<ListingMatch>(Array.Empty<ListingMatch>(), totalCount: 0, pageNumber: 1, pageSize: 50)
+            ResultToReturn = new PagedResult<ListingMatch>(Array.Empty<ListingMatch>(), 0, 1, 50)
         };
         var functions = new ListingMatchFunctions(fakeService);
 
@@ -92,12 +93,12 @@ public class ListingMatchFunctionsTests
     {
         var tenantContext = CreateTenantContext(isPlatformAdmin: true, tenantId: "platform", institutionId: null);
         var functionContext = Substitute.For<FunctionContext>();
-        functionContext.Items.Returns(new Dictionary<object, object?> { [nameof(TenantRequestContext)] = tenantContext });
+        functionContext.Items.Returns(new Dictionary<object, object> { [nameof(TenantRequestContext)] = tenantContext });
 
         var request = new TestHttpRequestData(functionContext, new Uri("https://localhost/matches?pageNumber=3&pageSize=500"));
         var fakeService = new FakeListingMatchService
         {
-            ResultToReturn = new PagedResult<ListingMatch>(Array.Empty<ListingMatch>(), totalCount: 0, pageNumber: 3, pageSize: 200)
+            ResultToReturn = new PagedResult<ListingMatch>(Array.Empty<ListingMatch>(), 0, 3, 200)
         };
         var functions = new ListingMatchFunctions(fakeService);
 
@@ -113,7 +114,7 @@ public class ListingMatchFunctionsTests
     {
         var tenantContext = CreateTenantContext(isPlatformAdmin: false, tenantId: "tenant-a", institutionId: "institution-a");
         var functionContext = Substitute.For<FunctionContext>();
-        functionContext.Items.Returns(new Dictionary<object, object?> { [nameof(TenantRequestContext)] = tenantContext });
+        functionContext.Items.Returns(new Dictionary<object, object> { [nameof(TenantRequestContext)] = tenantContext });
 
         var request = new TestHttpRequestData(functionContext, new Uri("https://localhost/matches?tenantId=tenant-b"));
         var fakeService = new FakeListingMatchService();
@@ -127,15 +128,18 @@ public class ListingMatchFunctionsTests
 
     private static TenantRequestContext CreateTenantContext(bool isPlatformAdmin, string tenantId, string? institutionId)
     {
+        var identity = new ClaimsIdentity(new[] { new Claim("roles", isPlatformAdmin ? "admin" : "user") }, "TestAuth");
+        var principal = new ClaimsPrincipal(identity);
+
         return new TenantRequestContext(
-            principal: null!,
-            TenantId: tenantId,
-            InstitutionId: institutionId,
-            IsPlatformAdmin: isPlatformAdmin,
-            ObjectId: "object",
-            PreferredUsername: "user",
-            CorrelationId: Guid.NewGuid().ToString(),
-            Roles: Array.Empty<string>());
+            principal,
+            tenantId,
+            institutionId,
+            isPlatformAdmin,
+            "object",
+            "user",
+            Guid.NewGuid().ToString(),
+            Array.Empty<string>());
     }
 
     private static ListingMatch CreateListingMatch()
@@ -163,7 +167,7 @@ public class ListingMatchFunctionsTests
         public int LastPageSize { get; private set; }
         public PagedResult<ListingMatch>? ResultToReturn { get; set; }
 
-        public Task<Result<IReadOnlyCollection<ListingMatch>>> FindMatchesAsync(string stateOrProvince, CancellationToken cancellationToken = default)
+        public Task<Result<IReadOnlyCollection<ListingMatch>>> FindMatchesAsync(string stateOrProvince, IReadOnlyCollection<TenantInstitutionScope> scopes, CancellationToken cancellationToken = default)
             => Task.FromResult(Result<IReadOnlyCollection<ListingMatch>>.Failure("Not implemented"));
 
         public Task<Result> PublishMatchesAsync(IReadOnlyCollection<ListingMatch> matches, CancellationToken cancellationToken = default)

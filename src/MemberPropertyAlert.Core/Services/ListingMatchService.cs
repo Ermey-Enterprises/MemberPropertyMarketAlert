@@ -179,7 +179,7 @@ public sealed class ListingMatchService : IListingMatchService
 
         foreach (var state in states)
         {
-            var addresses = await _memberAddressRepository.ListByStateAsync(state, cancellationToken);
+            var addresses = await _memberAddressRepository.ListByStateAsync(state, cancellationToken: cancellationToken);
             foreach (var address in addresses)
             {
                 lookup[address.Id] = address;

@@ -33,11 +33,11 @@ public sealed class ListingMatch : Entity
         Uri listingUrl,
         AlertSeverity severity,
         IEnumerable<string> matchedAddressIds,
-        IEnumerable<string>? matchedTenantIds,
-        IEnumerable<string>? matchedInstitutionIds,
         DateTimeOffset detectedAtUtc,
         string? rentCastRegion,
         IDictionary<string, object>? metadata,
+        IEnumerable<string>? matchedTenantIds,
+        IEnumerable<string>? matchedInstitutionIds,
         DateTimeOffset? createdAtUtc = null,
         DateTimeOffset? updatedAtUtc = null)
         : base(id, createdAtUtc, updatedAtUtc)
@@ -48,6 +48,9 @@ public sealed class ListingMatch : Entity
         ListingUrl = listingUrl;
         Severity = severity;
         _matchedAddressIds.AddRange(matchedAddressIds);
+        DetectedAtUtc = detectedAtUtc;
+        RentCastRegion = rentCastRegion;
+        Metadata = metadata ?? new Dictionary<string, object>();
         if (matchedTenantIds is not null)
         {
             _matchedTenantIds.AddRange(DistinctIdentifiers(matchedTenantIds));
@@ -57,9 +60,6 @@ public sealed class ListingMatch : Entity
         {
             _matchedInstitutionIds.AddRange(DistinctIdentifiers(matchedInstitutionIds));
         }
-        DetectedAtUtc = detectedAtUtc;
-        RentCastRegion = rentCastRegion;
-        Metadata = metadata ?? new Dictionary<string, object>();
     }
 
     public static ListingMatch Create(

@@ -146,7 +146,10 @@ public class MemberAddressImportFunctionsTests
         public Task<PagedResult<MemberAddress>> ListByInstitutionAsync(string institutionId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
 
-        public Task<IReadOnlyCollection<MemberAddress>> ListByStateAsync(string stateOrProvince, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyCollection<MemberAddress>> ListByStateAsync(string stateOrProvince, string? tenantId = null, string? institutionId = null, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<Result> DeleteAsync(string institutionId, string addressId, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
 
         public Task<Result> UpsertBulkAsync(string institutionId, IReadOnlyCollection<MemberAddress> addresses, CancellationToken cancellationToken = default)
