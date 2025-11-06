@@ -302,6 +302,16 @@ jobs:
           echo "  Resource Group: $RG_NAME"
           echo "  Environment: $ENV"
           echo "  Location: $LOC"
+
+          if [ ! -f infra/main.bicep ]; then
+            echo "⚠️ infra/main.bicep not found; skipping infrastructure deployment."
+            echo "function-app-name=" >> $GITHUB_OUTPUT
+            echo "function-app-url=" >> $GITHUB_OUTPUT
+            echo "web-app-name=" >> $GITHUB_OUTPUT
+            echo "web-app-url=" >> $GITHUB_OUTPUT
+            echo "key-vault-name=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           
           # Create resource group
           echo "🔨 Creating resource group..."
