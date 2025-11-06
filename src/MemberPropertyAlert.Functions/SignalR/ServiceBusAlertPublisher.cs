@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,14 +47,7 @@ public sealed class ServiceBusAlertPublisher : IAlertPublisher
             {
                 try
                 {
-                    var payload = JsonSerializer.Serialize(match, SerializerOptions);
-                    var message = new ServiceBusMessage(payload)
-                    {
-                        ContentType = "application/json",
-                        Subject = "listing-match",
-                        MessageId = match.Id
-                    };
-
+                    var message = CreateServiceBusMessage(match);
                     await sender.SendMessageAsync(message, cancellationToken);
                 }
                 catch (Exception ex)
@@ -79,7 +73,9 @@ public sealed class ServiceBusAlertPublisher : IAlertPublisher
                         url = match.ListingUrl.ToString()
                     },
                     ["severity"] = match.Severity.ToString(),
-                    ["detectedAtUtc"] = match.DetectedAtUtc
+                    ["detectedAtUtc"] = match.DetectedAtUtc,
+                    ["tenantIds"] = match.MatchedTenantIds,
+                    ["institutionIds"] = match.MatchedInstitutionIds
                 };
 
                 var result = await _webhookClient.SendAsync(_options.DefaultWebhookUrl, payload, cancellationToken);
@@ -96,5 +92,47 @@ public sealed class ServiceBusAlertPublisher : IAlertPublisher
         }
 
         return Result.Success();
+    }
+
+    internal static ServiceBusMessage CreateServiceBusMessage(ListingMatch match)
+    {
+        var payload = JsonSerializer.Serialize(match, SerializerOptions);
+        var message = new ServiceBusMessage(payload)
+        {
+            ContentType = "application/json",
+            Subject = BuildSubject(match),
+            MessageId = match.Id
+        };
+
+        if (match.MatchedTenantIds.Count > 0)
+        {
+            message.ApplicationProperties["tenantIds"] = string.Join(',', match.MatchedTenantIds);
+            if (match.MatchedTenantIds.Count == 1)
+            {
+                message.ApplicationProperties["tenantId"] = match.MatchedTenantIds.First();
+            }
+        }
+
+        if (match.MatchedInstitutionIds.Count > 0)
+        {
+            message.ApplicationProperties["institutionIds"] = string.Join(',', match.MatchedInstitutionIds);
+        }
+
+        return message;
+    }
+
+    private static string BuildSubject(ListingMatch match)
+    {
+        if (match.MatchedTenantIds.Count == 1)
+        {
+            return $"listing-match:{match.MatchedTenantIds.First()}";
+        }
+
+        if (match.MatchedTenantIds.Count > 1)
+        {
+            return "listing-match:multi-tenant";
+        }
+
+        return "listing-match";
     }
 }

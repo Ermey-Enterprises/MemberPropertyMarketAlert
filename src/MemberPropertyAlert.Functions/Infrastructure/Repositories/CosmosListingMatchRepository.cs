@@ -32,8 +32,16 @@ public sealed class CosmosListingMatchRepository : IListingMatchRepository
         try
         {
             var container = await _containerFactory.GetAlertsContainerAsync(cancellationToken);
-            var institutionIds = await ResolveInstitutionIdsAsync(match.MatchedAddressIds, cancellationToken);
-            var document = ListingMatchDocument.FromDomain(match, institutionIds);
+            if (!match.MatchedInstitutionIds.Any())
+            {
+                var resolvedInstitutions = await ResolveInstitutionIdsAsync(match.MatchedAddressIds, cancellationToken);
+                if (resolvedInstitutions.Count > 0)
+                {
+                    match.SetTenancyDetails(match.MatchedTenantIds, resolvedInstitutions);
+                }
+            }
+
+            var document = ListingMatchDocument.FromDomain(match);
             await container.CreateItemAsync(document, new PartitionKey(document.SeverityPartitionKey), cancellationToken: cancellationToken);
             return Result<ListingMatch>.Success(match);
         }
@@ -211,6 +219,7 @@ public sealed class CosmosListingMatchRepository : IListingMatchRepository
         public string Severity { get; set; } = default!;
     public string SeverityPartitionKey => Severity;
         public string[] MatchedAddressIds { get; set; } = Array.Empty<string>();
+        public string[] MatchedTenantIds { get; set; } = Array.Empty<string>();
         public string[] MatchedInstitutionIds { get; set; } = Array.Empty<string>();
         public DateTimeOffset DetectedAtUtc { get; set; }
         public DateTimeOffset CreatedAtUtc { get; set; }
@@ -219,7 +228,7 @@ public sealed class CosmosListingMatchRepository : IListingMatchRepository
         public Dictionary<string, object?>? Metadata { get; set; }
         public AddressDocument ListingAddress { get; set; } = default!;
 
-        public static ListingMatchDocument FromDomain(ListingMatch match, IReadOnlyCollection<string> institutionIds)
+        public static ListingMatchDocument FromDomain(ListingMatch match)
         {
             return new ListingMatchDocument
             {
@@ -229,7 +238,8 @@ public sealed class CosmosListingMatchRepository : IListingMatchRepository
                 MonthlyRent = match.MonthlyRent,
                 Severity = match.Severity.ToString(),
                 MatchedAddressIds = match.MatchedAddressIds.ToArray(),
-                MatchedInstitutionIds = institutionIds.ToArray(),
+                MatchedTenantIds = match.MatchedTenantIds.ToArray(),
+                MatchedInstitutionIds = match.MatchedInstitutionIds.ToArray(),
                 DetectedAtUtc = match.DetectedAtUtc,
                 CreatedAtUtc = match.CreatedAtUtc,
                 UpdatedAtUtc = match.UpdatedAtUtc,
@@ -255,7 +265,9 @@ public sealed class CosmosListingMatchRepository : IListingMatchRepository
                 RentCastRegion,
                 metadata,
                 CreatedAtUtc,
-                UpdatedAtUtc);
+                UpdatedAtUtc,
+                MatchedTenantIds,
+                MatchedInstitutionIds);
         }
     }
 
