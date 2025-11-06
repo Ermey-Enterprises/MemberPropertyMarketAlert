@@ -6,6 +6,7 @@ using MemberPropertyAlert.Core.Abstractions.Repositories;
 using MemberPropertyAlert.Core.Abstractions.Services;
 using MemberPropertyAlert.Core.Domain.Entities;
 using MemberPropertyAlert.Core.Domain.Enums;
+using MemberPropertyAlert.Core.Domain.ValueObjects;
 using MemberPropertyAlert.Core.Models;
 using MemberPropertyAlert.Core.Results;
 using MemberPropertyAlert.Core.Scheduling;
@@ -37,7 +38,15 @@ public sealed class ScanOrchestrator : IScanOrchestrator
 
     public async Task<Result> StartScanAsync(string stateOrProvince, CancellationToken cancellationToken = default)
     {
-        var scanJobResult = ScanJob.Create(Guid.NewGuid().ToString("N"), stateOrProvince, Array.Empty<string>());
+        var scopesResult = await _institutionRepository.ListActiveScopesAsync(cancellationToken);
+        if (scopesResult.IsFailure)
+        {
+            return Result.Failure(scopesResult.Error ?? "Failed to load active institutions.");
+        }
+
+        var scopes = scopesResult.Value ?? Array.Empty<TenantInstitutionScope>();
+
+        var scanJobResult = ScanJob.Create(Guid.NewGuid().ToString("N"), stateOrProvince, scopes);
         if (scanJobResult.IsFailure || scanJobResult.Value is null)
         {
             return Result.Failure(scanJobResult.Error ?? "Failed to create scan job.");
@@ -55,7 +64,7 @@ public sealed class ScanOrchestrator : IScanOrchestrator
 
         try
         {
-            var matchesResult = await _listingMatchService.FindMatchesAsync(stateOrProvince, cancellationToken);
+            var matchesResult = await _listingMatchService.FindMatchesAsync(stateOrProvince, scopes, cancellationToken);
             if (matchesResult.IsFailure)
             {
                 scanJob.MarkFailed(matchesResult.Error ?? "Failed to find matches.");
