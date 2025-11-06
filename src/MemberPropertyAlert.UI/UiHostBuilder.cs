@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 
@@ -48,7 +49,15 @@ public static class UiHostBuilder
         configureBuilder?.Invoke(builder);
 
         var tenantAlerts = SeedData.CreateTenantAlerts();
-        var institutions = SeedData.CreateInstitutionSummaries();
+        var tenantSeeds = SeedData.CreateTenants();
+        var institutions = tenantSeeds
+            .Select(tenant => new InstitutionSummary(
+                tenant.Name,
+                tenant.TenantId,
+                tenant.ActiveMembers,
+                tenant.RegisteredAddresses,
+                tenant.WebhookConfigured))
+            .ToArray();
 
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
@@ -58,6 +67,7 @@ public static class UiHostBuilder
 
         builder.Services.AddSingleton(tenantAlerts);
         builder.Services.AddSingleton(institutions);
+        builder.Services.AddSingleton(new TenantRegistry(tenantSeeds));
 
         var app = builder.Build();
 
@@ -67,6 +77,41 @@ public static class UiHostBuilder
         app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
         app.MapGet("/api/tenant/alerts", (TenantAlert[] alerts) => alerts);
         app.MapGet("/api/admin/institutions", (InstitutionSummary[] summaries) => summaries);
+        app.MapGet("/api/admin/tenants", (TenantRegistry registry) => Results.Ok(registry.GetAll()));
+        app.MapGet("/api/admin/tenants/{tenantId}", (TenantRegistry registry, string tenantId) =>
+        {
+            return registry.TryGet(tenantId, out var tenant)
+                ? Results.Ok(tenant)
+                : Results.NotFound();
+        });
+
+        app.MapPost("/api/admin/tenants", (TenantRegistry registry, TenantCreateRequest request) =>
+        {
+            try
+            {
+                var created = registry.Add(request);
+                return Results.Created($"/api/admin/tenants/{created.TenantId}", created);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { error = ex.Message });
+            }
+        });
+
+        app.MapPut("/api/admin/tenants/{tenantId}", (TenantRegistry registry, string tenantId, TenantUpdateRequest request) =>
+        {
+            var updated = registry.Update(tenantId, request);
+            return updated is not null ? Results.Ok(updated) : Results.NotFound();
+        });
+
+        app.MapDelete("/api/admin/tenants/{tenantId}", (TenantRegistry registry, string tenantId) =>
+        {
+            return registry.Delete(tenantId) ? Results.NoContent() : Results.NotFound();
+        });
         app.MapFallbackToFile("index.html");
 
         return app;

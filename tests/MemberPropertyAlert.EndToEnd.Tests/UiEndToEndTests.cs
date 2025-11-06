@@ -191,35 +191,55 @@ public class UiEndToEndTests : IClassFixture<UiServerFixture>, IClassFixture<Gen
     }
 
     [Fact]
-    public async Task AdminConsole_FiltersBySearchAndWebhook()
+    public async Task AdminConsole_SupportsTenantLifecycle()
     {
         await using var context = await _browser.CreateContextAsync();
         var page = await context.NewPageAsync();
         UiTestDiagnostics.Attach(page);
+        page.Dialog += async (_, dialog) => await dialog.AcceptAsync();
 
-    var adminResponse = await page.GotoAsync($"{_server.BaseAddress}/admin.html", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
-    Assert.True(adminResponse?.Ok, $"Admin page load failed: {adminResponse?.Status} {adminResponse?.Url}");
-        await page.WaitForSelectorAsync("[data-testid='institution-row']");
+        var adminResponse = await page.GotoAsync($"{_server.BaseAddress}/admin.html", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        Assert.True(adminResponse?.Ok, $"Admin page load failed: {adminResponse?.Status} {adminResponse?.Url}");
 
-        var totalRows = await page.Locator("[data-testid='institution-row']").CountAsync();
-        Assert.Equal(3, totalRows);
+        await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'tenant-row\\']').length === 3");
 
         await page.FillAsync("[data-testid='search-input']", "contoso");
-        await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'institution-row\\']:not([hidden])').length === 1");
+        await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'tenant-row\\']:not([hidden])').length === 1");
 
-        var tenantId = await page.Locator("[data-testid='institution-row']:not([hidden]) [data-testid='institution-tenant']").InnerTextAsync();
-        Assert.Contains("contoso-technical", tenantId, StringComparison.OrdinalIgnoreCase);
+        var statusText = await page.Locator("[data-testid='tenant-row']:not([hidden]) [data-testid='institution-status']").InnerTextAsync();
+        Assert.Contains("Onboarding", statusText, StringComparison.OrdinalIgnoreCase);
 
         await page.CheckAsync("[data-testid='webhook-filter']");
-        await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'institution-row\\']:not([hidden])').length === 0");
+        await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'tenant-row\\']:not([hidden])').length === 0");
 
         var emptyVisible = await page.Locator("[data-testid='admin-empty-state']").IsVisibleAsync();
         Assert.True(emptyVisible);
 
         await page.UncheckAsync("[data-testid='webhook-filter']");
-        await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'institution-row\\']:not([hidden])').length === 1");
+        await page.FillAsync("[data-testid='search-input']", string.Empty);
+        await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'tenant-row\\']').length === 3");
 
-        var countText = await page.Locator("[data-testid='institution-count']").InnerTextAsync();
-        Assert.Contains("1", countText, StringComparison.OrdinalIgnoreCase);
+        await page.ClickAsync("[data-testid='add-tenant-button']");
+        await page.FillAsync("[data-testid='tenant-name-input']", "Tailwind Academy");
+        await page.FillAsync("[data-testid='tenant-id-input']", "tailwind-academy");
+        await page.FillAsync("[data-testid='tenant-members-input']", "24");
+        await page.FillAsync("[data-testid='tenant-addresses-input']", "52");
+        await page.FillAsync("[data-testid='tenant-sso-input']", "https://tailwind.academy/sso");
+        await page.CheckAsync("[data-testid='tenant-webhook-input']");
+        await page.ClickAsync("[data-testid='tenant-save-button']");
+
+        await page.WaitForFunctionAsync("() => document.querySelector('[data-testid=\\'tenant-row\\'][data-tenant-id=\\'tailwind-academy\\']') !== null");
+
+        await page.ClickAsync("[data-testid='tenant-row'][data-tenant-id='tailwind-academy']");
+        await page.SelectOptionAsync("[data-testid='tenant-status-select']", "Active");
+        await page.FillAsync("[data-testid='tenant-members-input']", "48");
+        await page.ClickAsync("[data-testid='tenant-save-button']");
+
+        await page.WaitForFunctionAsync("() => document.querySelector('[data-testid=\\'tenant-row\\'][data-tenant-id=\\'tailwind-academy\\'] [data-testid=\\'institution-status\\']').innerText.includes('Active')");
+
+        await page.ClickAsync("[data-testid='tenant-delete-button']");
+        await page.WaitForFunctionAsync("() => !document.querySelector('[data-testid=\\'tenant-row\\'][data-tenant-id=\\'tailwind-academy\\']')");
+
+        await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'tenant-row\\']').length === 3");
     }
 }

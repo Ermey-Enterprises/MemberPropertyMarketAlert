@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 
 namespace MemberPropertyAlert.UI;
 
@@ -29,29 +30,61 @@ public static class SeedData
         };
     }
 
-    public static InstitutionSummary[] CreateInstitutionSummaries()
+    public static TenantRecord[] CreateTenants()
     {
+        var now = DateTimeOffset.UtcNow;
+
         return new[]
         {
-            new InstitutionSummary(
-                Name: "Northwind University",
-                TenantId: "northwind-university",
-                ActiveMembers: 128,
-                RegisteredAddresses: 342,
-                WebhookConfigured: true),
-            new InstitutionSummary(
-                Name: "Contoso Technical College",
-                TenantId: "contoso-technical",
-                ActiveMembers: 54,
-                RegisteredAddresses: 97,
-                WebhookConfigured: false),
-            new InstitutionSummary(
-                Name: "Fabrikam Law School",
-                TenantId: "fabrikam-law",
-                ActiveMembers: 35,
-                RegisteredAddresses: 61,
-                WebhookConfigured: true)
+            new TenantRecord
+            {
+                Name = "Northwind University",
+                TenantId = "northwind-university",
+                Status = "Active",
+                WebhookConfigured = true,
+                ActiveMembers = 128,
+                RegisteredAddresses = 342,
+                SsoLoginUrl = "https://northwind.edu/sso",
+                CreatedAt = now.AddMonths(-11),
+                LastUpdated = now.AddHours(-6)
+            },
+            new TenantRecord
+            {
+                Name = "Contoso Technical College",
+                TenantId = "contoso-technical",
+                Status = "Onboarding",
+                WebhookConfigured = false,
+                ActiveMembers = 54,
+                RegisteredAddresses = 97,
+                SsoLoginUrl = "https://contoso.tech/login",
+                CreatedAt = now.AddMonths(-2),
+                LastUpdated = now.AddDays(-1)
+            },
+            new TenantRecord
+            {
+                Name = "Fabrikam Law School",
+                TenantId = "fabrikam-law",
+                Status = "Maintenance",
+                WebhookConfigured = true,
+                ActiveMembers = 35,
+                RegisteredAddresses = 61,
+                SsoLoginUrl = null,
+                CreatedAt = now.AddMonths(-6),
+                LastUpdated = now.AddHours(-12)
+            }
         };
+    }
+
+    public static InstitutionSummary[] CreateInstitutionSummaries()
+    {
+        return CreateTenants()
+            .Select(tenant => new InstitutionSummary(
+                Name: tenant.Name,
+                TenantId: tenant.TenantId,
+                ActiveMembers: tenant.ActiveMembers,
+                RegisteredAddresses: tenant.RegisteredAddresses,
+                WebhookConfigured: tenant.WebhookConfigured))
+            .ToArray();
     }
 }
 
