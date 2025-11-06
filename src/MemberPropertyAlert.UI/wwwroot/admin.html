@@ -6,68 +6,110 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <main class="layout">
+  <main class="layout layout-admin">
     <header class="hero">
       <a class="back" href="/" data-testid="back-link">← Back</a>
       <h1>Administrator Console</h1>
-      <p class="tagline">Track tenant onboarding, address coverage, and webhook readiness.</p>
+      <p class="tagline">Create, monitor, and manage tenant environments and their onboarding lifecycle.</p>
       <div class="status-pill" data-testid="admin-health">Loading…</div>
     </header>
 
     <section class="controls">
       <label class="control">
         <span>Search tenants</span>
-        <input id="searchInput" type="search" placeholder="Search by institution…" data-testid="search-input" />
+        <input id="searchInput" type="search" placeholder="Search by institution or tenant ID" data-testid="search-input" />
       </label>
       <label class="control checkbox">
         <input id="webhookFilter" type="checkbox" data-testid="webhook-filter" />
         <span>Webhook configured only</span>
       </label>
-      <span class="meta" data-testid="institution-count">0 institutions</span>
+      <button id="addTenantButton" class="primary" type="button" data-testid="add-tenant-button">＋ Add tenant</button>
+      <span class="meta" data-testid="institution-count">0 tenants</span>
     </section>
 
-    <table class="table" data-testid="institution-table">
-      <thead>
-        <tr>
-          <th scope="col">Institution</th>
-          <th scope="col">Tenant ID</th>
-          <th scope="col">Active Members</th>
-          <th scope="col">Addresses</th>
-          <th scope="col">Webhook</th>
-        </tr>
-      </thead>
-      <tbody id="institutionTableBody">
-        <tr data-row="institution" data-testid="institution-row" data-name="Northwind University" data-tenant="northwind-university" data-webhook="true">
-          <th scope="row" data-testid="institution-name">Northwind University</th>
-          <td data-testid="institution-tenant">northwind-university</td>
-          <td data-testid="institution-members">128</td>
-          <td data-testid="institution-addresses">342</td>
-          <td>
-            <span class="badge active" data-testid="institution-webhook">Configured</span>
-          </td>
-        </tr>
-        <tr data-row="institution" data-testid="institution-row" data-name="Contoso Technical College" data-tenant="contoso-technical" data-webhook="false">
-          <th scope="row" data-testid="institution-name">Contoso Technical College</th>
-          <td data-testid="institution-tenant">contoso-technical</td>
-          <td data-testid="institution-members">54</td>
-          <td data-testid="institution-addresses">97</td>
-          <td>
-            <span class="badge pending" data-testid="institution-webhook">Missing</span>
-          </td>
-        </tr>
-        <tr data-row="institution" data-testid="institution-row" data-name="Fabrikam Law School" data-tenant="fabrikam-law" data-webhook="true">
-          <th scope="row" data-testid="institution-name">Fabrikam Law School</th>
-          <td data-testid="institution-tenant">fabrikam-law</td>
-          <td data-testid="institution-members">35</td>
-          <td data-testid="institution-addresses">61</td>
-          <td>
-            <span class="badge active" data-testid="institution-webhook">Configured</span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="admin-grid">
+      <section class="panel">
+        <table class="table" data-testid="institution-table">
+          <thead>
+            <tr>
+              <th scope="col">Institution</th>
+              <th scope="col">Tenant ID</th>
+              <th scope="col">Status</th>
+              <th scope="col">Active Members</th>
+              <th scope="col">Addresses</th>
+              <th scope="col">Webhook</th>
+            </tr>
+          </thead>
+          <tbody id="institutionTableBody" data-testid="tenant-table-body"></tbody>
+        </table>
+        <p id="adminEmptyState" class="empty" data-testid="admin-empty-state" hidden>No tenants matched the current filters.</p>
+      </section>
 
-    <p id="adminEmptyState" class="empty" data-testid="admin-empty-state" hidden>No institutions matched the current filters.</p>
+      <aside id="tenantDetailPanel" class="panel detail" data-testid="tenant-detail-panel" hidden>
+        <header class="detail-header">
+          <h2 data-testid="tenant-detail-heading">Manage tenant</h2>
+          <span class="meta" data-testid="tenant-last-updated"></span>
+        </header>
+
+        <form id="tenantForm" class="form" autocomplete="off">
+          <div class="form-group">
+            <label class="control">
+              <span>Institution name</span>
+              <input id="tenantName" name="name" type="text" required data-testid="tenant-name-input" />
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label class="control">
+              <span>Tenant ID</span>
+              <input id="tenantId" name="tenantId" type="text" pattern="[a-z0-9\-]+" required data-testid="tenant-id-input" />
+              <small class="hint">Lowercase letters, numbers, and hyphens only.</small>
+            </label>
+          </div>
+
+          <div class="form-row">
+            <label class="control">
+              <span>Status</span>
+              <select id="tenantStatus" name="status" data-testid="tenant-status-select">
+                <option value="Onboarding">Onboarding</option>
+                <option value="Active">Active</option>
+                <option value="Maintenance">Maintenance</option>
+                <option value="Suspended">Suspended</option>
+              </select>
+            </label>
+            <label class="control checkbox inline">
+              <input id="tenantWebhook" name="webhookConfigured" type="checkbox" data-testid="tenant-webhook-input" />
+              <span>Webhook configured</span>
+            </label>
+          </div>
+
+          <div class="form-row">
+            <label class="control">
+              <span>Active members</span>
+              <input id="tenantMembers" name="activeMembers" type="number" min="0" step="1" value="0" data-testid="tenant-members-input" />
+            </label>
+            <label class="control">
+              <span>Registered addresses</span>
+              <input id="tenantAddresses" name="registeredAddresses" type="number" min="0" step="1" value="0" data-testid="tenant-addresses-input" />
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label class="control">
+              <span>SSO login URL</span>
+              <input id="tenantSso" name="ssoLoginUrl" type="url" placeholder="https://contoso.edu/sso" data-testid="tenant-sso-input" />
+            </label>
+          </div>
+
+          <p class="form-error" data-testid="tenant-form-error" hidden></p>
+
+          <div class="form-footer">
+            <button id="saveTenantButton" class="primary" type="submit" data-testid="tenant-save-button">Save tenant</button>
+            <button id="deleteTenantButton" class="danger" type="button" data-testid="tenant-delete-button">Delete tenant</button>
+          </div>
+        </form>
+      </aside>
+    </div>
   </main>
 
   <script type="module">
@@ -76,42 +118,321 @@
     const emptyState = document.getElementById('adminEmptyState');
     const count = document.querySelector('[data-testid="institution-count"]');
     const healthIndicator = document.querySelector('[data-testid="admin-health"]');
-    const rows = Array.from(document.querySelectorAll('[data-row="institution"]'));
+    const addTenantButton = document.getElementById('addTenantButton');
+    const tableBody = document.getElementById('institutionTableBody');
+    const detailPanel = document.getElementById('tenantDetailPanel');
+    const detailHeading = document.querySelector('[data-testid="tenant-detail-heading"]');
+    const lastUpdatedMeta = document.querySelector('[data-testid="tenant-last-updated"]');
+    const form = document.getElementById('tenantForm');
+    const formError = document.querySelector('[data-testid="tenant-form-error"]');
+    const saveButton = document.getElementById('saveTenantButton');
+    const deleteButton = document.getElementById('deleteTenantButton');
 
-    function render() {
-      const term = searchInput.value.trim().toLowerCase();
-      const requireWebhook = webhookFilter.checked;
-      let visible = 0;
+    const nameInput = document.getElementById('tenantName');
+    const idInput = document.getElementById('tenantId');
+    const statusSelect = document.getElementById('tenantStatus');
+    const webhookInput = document.getElementById('tenantWebhook');
+    const membersInput = document.getElementById('tenantMembers');
+    const addressesInput = document.getElementById('tenantAddresses');
+    const ssoInput = document.getElementById('tenantSso');
 
-      rows.forEach(row => {
-        const name = row.dataset.name?.toLowerCase() ?? '';
-        const tenant = row.dataset.tenant?.toLowerCase() ?? '';
-        const webhookEnabled = row.dataset.webhook === 'true';
+    let tenants = [];
+    let selectedTenantId = null;
+    let mode = 'view';
 
-        const matchesSearch = !term || name.includes(term) || tenant.includes(term);
-        const matchesWebhook = !requireWebhook || webhookEnabled;
-        const shouldShow = matchesSearch && matchesWebhook;
-
-        if (shouldShow) {
-          row.removeAttribute('hidden');
-          row.setAttribute('data-testid', 'institution-row');
-          visible += 1;
-        } else {
-          row.setAttribute('hidden', '');
-          row.setAttribute('data-testid', 'institution-row-hidden');
-        }
-      });
-
-      count.textContent = `${visible} institution${visible === 1 ? '' : 's'}`;
-      emptyState.hidden = visible > 0;
+    function normalizeCountText(total) {
+      return `${total} tenant${total === 1 ? '' : 's'}`;
     }
 
-    searchInput.addEventListener('input', render);
-    webhookFilter.addEventListener('change', render);
+    function resetForm() {
+      form.reset();
+      statusSelect.value = 'Onboarding';
+      membersInput.value = '0';
+      addressesInput.value = '0';
+      formError.hidden = true;
+      formError.textContent = '';
+    }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      healthIndicator.textContent = 'Connected';
-      render();
+    function setHealth(status, isError = false) {
+      healthIndicator.textContent = status;
+      healthIndicator.classList.toggle('error', isError);
+    }
+
+    function renderTable() {
+      const term = searchInput.value.trim().toLowerCase();
+      const requireWebhook = webhookFilter.checked;
+
+      tableBody.innerHTML = '';
+
+      const filtered = tenants.filter(tenant => {
+        const matchesTerm = !term || tenant.name.toLowerCase().includes(term) || tenant.tenantId.toLowerCase().includes(term);
+        const matchesWebhook = !requireWebhook || tenant.webhookConfigured;
+        return matchesTerm && matchesWebhook;
+      });
+
+      filtered.forEach(tenant => {
+        const row = document.createElement('tr');
+        row.dataset.row = 'tenant';
+        row.dataset.tenantId = tenant.tenantId;
+        row.dataset.webhook = String(tenant.webhookConfigured);
+        row.setAttribute('data-testid', 'tenant-row');
+        row.setAttribute('tabindex', '0');
+        row.addEventListener('click', () => selectTenant(tenant.tenantId));
+        row.addEventListener('keypress', event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            selectTenant(tenant.tenantId);
+          }
+        });
+
+        if (tenant.tenantId === selectedTenantId) {
+          row.classList.add('selected');
+          row.setAttribute('aria-selected', 'true');
+        } else {
+          row.removeAttribute('aria-selected');
+        }
+
+        row.innerHTML = `
+          <th scope="row" data-testid="institution-name">${tenant.name}</th>
+          <td data-testid="institution-tenant">${tenant.tenantId}</td>
+          <td data-testid="institution-status"><span class="badge ${badgeClass(tenant.status)}">${tenant.status}</span></td>
+          <td data-testid="institution-members">${tenant.activeMembers}</td>
+          <td data-testid="institution-addresses">${tenant.registeredAddresses}</td>
+          <td><span class="badge ${tenant.webhookConfigured ? 'active' : 'pending'}" data-testid="institution-webhook">${tenant.webhookConfigured ? 'Configured' : 'Missing'}</span></td>
+        `;
+
+        tableBody.appendChild(row);
+      });
+
+      count.textContent = normalizeCountText(filtered.length);
+      emptyState.hidden = filtered.length > 0;
+
+      if (filtered.length === 0 && mode !== 'create') {
+        selectedTenantId = null;
+        hideDetailPanel();
+      }
+    }
+
+    function badgeClass(status) {
+      const normalized = status.toLowerCase();
+      if (normalized === 'active') {
+        return 'active';
+      }
+      if (normalized === 'onboarding') {
+        return 'pending';
+      }
+      if (normalized === 'maintenance') {
+        return 'resolved';
+      }
+      return 'unknown';
+    }
+
+    function hideDetailPanel() {
+      detailPanel.hidden = true;
+    }
+
+    function showDetailPanel() {
+      detailPanel.hidden = false;
+    }
+
+    function selectTenant(tenantId) {
+      const tenant = tenants.find(item => item.tenantId === tenantId);
+      if (!tenant) {
+        return;
+      }
+
+      mode = 'edit';
+      selectedTenantId = tenant.tenantId;
+      detailHeading.textContent = tenant.name;
+      idInput.readOnly = true;
+      deleteButton.hidden = false;
+      saveButton.textContent = 'Save changes';
+      formError.hidden = true;
+      formError.textContent = '';
+
+      nameInput.value = tenant.name;
+      idInput.value = tenant.tenantId;
+      statusSelect.value = tenant.status;
+      webhookInput.checked = tenant.webhookConfigured;
+      membersInput.value = tenant.activeMembers;
+      addressesInput.value = tenant.registeredAddresses;
+      ssoInput.value = tenant.ssoLoginUrl ?? '';
+      lastUpdatedMeta.textContent = tenant.lastUpdated ? `Last updated ${new Date(tenant.lastUpdated).toLocaleString()}` : '';
+
+      showDetailPanel();
+      renderTable();
+    }
+
+    function beginCreateTenant() {
+      mode = 'create';
+      selectedTenantId = null;
+      resetForm();
+      idInput.readOnly = false;
+      deleteButton.hidden = true;
+      detailHeading.textContent = 'Create tenant';
+      lastUpdatedMeta.textContent = '';
+      saveButton.textContent = 'Create tenant';
+      showDetailPanel();
+      nameInput.focus();
+      renderTable();
+    }
+
+    function setSaving(isSaving) {
+      saveButton.disabled = isSaving;
+      saveButton.dataset.loading = isSaving ? 'true' : 'false';
+    }
+
+    function gatherPayload() {
+      const tenantId = idInput.value.trim().toLowerCase();
+      idInput.value = tenantId;
+      return {
+        name: nameInput.value.trim(),
+        tenantId,
+        status: statusSelect.value,
+        webhookConfigured: webhookInput.checked,
+        activeMembers: Number.parseInt(membersInput.value, 10) || 0,
+        registeredAddresses: Number.parseInt(addressesInput.value, 10) || 0,
+        ssoLoginUrl: ssoInput.value.trim() || null
+      };
+    }
+
+    async function fetchTenants() {
+      try {
+        const response = await fetch('/api/admin/tenants');
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        tenants = await response.json();
+        setHealth('Connected');
+        renderTable();
+
+        if (selectedTenantId) {
+          const tenant = tenants.find(item => item.tenantId === selectedTenantId);
+          if (tenant) {
+            selectTenant(selectedTenantId);
+          }
+        }
+      } catch (error) {
+        console.error('Unable to load tenants', error);
+        setHealth('Offline', true);
+        tenants = [];
+        renderTable();
+      }
+    }
+
+    async function createTenant(payload) {
+      const response = await fetch('/api/admin/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Unable to create tenant.');
+      }
+
+      return await response.json();
+    }
+
+    async function updateTenant(tenantId, payload) {
+      const response = await fetch(`/api/admin/tenants/${encodeURIComponent(tenantId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Unable to save tenant.');
+      }
+
+      return await response.json();
+    }
+
+    async function deleteTenant(tenantId) {
+      const response = await fetch(`/api/admin/tenants/${encodeURIComponent(tenantId)}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok && response.status !== 404) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Unable to delete tenant.');
+      }
+    }
+
+    addTenantButton.addEventListener('click', () => {
+      beginCreateTenant();
+    });
+
+    searchInput.addEventListener('input', renderTable);
+    webhookFilter.addEventListener('change', renderTable);
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      formError.hidden = true;
+      formError.textContent = '';
+
+      const payload = gatherPayload();
+
+      if (!payload.name || !payload.tenantId) {
+        formError.textContent = 'Tenant name and tenant ID are required.';
+        formError.hidden = false;
+        return;
+      }
+
+      setSaving(true);
+
+      try {
+        if (mode === 'create') {
+          const created = await createTenant(payload);
+          selectedTenantId = created.tenantId;
+          await fetchTenants();
+          selectTenant(selectedTenantId);
+        } else if (mode === 'edit' && selectedTenantId) {
+          await updateTenant(selectedTenantId, payload);
+          await fetchTenants();
+          selectTenant(selectedTenantId);
+        }
+      } catch (error) {
+        console.error(error);
+        formError.textContent = error.message || 'Unexpected error.';
+        formError.hidden = false;
+      } finally {
+        setSaving(false);
+      }
+    });
+
+    deleteButton.addEventListener('click', async () => {
+      if (!selectedTenantId) {
+        return;
+      }
+
+      if (!window.confirm('Remove this tenant and all managed resources?')) {
+        return;
+      }
+
+      setSaving(true);
+      deleteButton.disabled = true;
+
+      try {
+        await deleteTenant(selectedTenantId);
+        selectedTenantId = null;
+        hideDetailPanel();
+        await fetchTenants();
+      } catch (error) {
+        console.error(error);
+        formError.textContent = error.message || 'Unable to delete tenant.';
+        formError.hidden = false;
+      } finally {
+        deleteButton.disabled = false;
+        setSaving(false);
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      await fetchTenants();
     });
   </script>
 </body>
