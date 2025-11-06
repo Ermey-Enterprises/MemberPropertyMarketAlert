@@ -12,6 +12,7 @@ public interface IInstitutionRepository
     Task<Result<Institution?>> GetAsync(string institutionId, CancellationToken cancellationToken = default);
     Task<PagedResult<Institution>> ListAsync(int pageNumber, int pageSize, CancellationToken cancellationToken = default);
     Task<Result<MemberPropertyAlert.Core.Models.InstitutionCounts>> GetCountsAsync(CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyCollection<MemberPropertyAlert.Core.Domain.ValueObjects.TenantInstitutionScope>>> ListActiveScopesAsync(CancellationToken cancellationToken = default);
     Task<Result> UpdateAsync(Institution institution, CancellationToken cancellationToken = default);
     Task<Result> DeleteAsync(string institutionId, CancellationToken cancellationToken = default);
 }
