@@ -12,8 +12,10 @@ using MemberPropertyAlert.Core.Services;
 using MemberPropertyAlert.Functions.Configuration;
 using MemberPropertyAlert.Functions.Extensions;
 using MemberPropertyAlert.Functions.Infrastructure.Integrations;
+using MemberPropertyAlert.Functions.Infrastructure.Messaging;
 using MemberPropertyAlert.Functions.Infrastructure.Repositories;
 using MemberPropertyAlert.Functions.Infrastructure.Secrets;
+using MemberPropertyAlert.Functions.Infrastructure.Storage;
 using MemberPropertyAlert.Functions.Infrastructure.Telemetry;
 using MemberPropertyAlert.Functions.Middleware;
 using MemberPropertyAlert.Functions.Security;
@@ -50,6 +52,7 @@ var host = new HostBuilder()
         services.Configure<CosmosOptions>(configuration.GetSection(CosmosOptions.SectionName));
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
         services.Configure<ServiceBusOptions>(configuration.GetSection(ServiceBusOptions.SectionName));
+        services.Configure<MemberAddressImportOptions>(configuration.GetSection(MemberAddressImportOptions.SectionName));
         services.Configure<TenantAuthenticationOptions>(configuration.GetSection(TenantAuthenticationOptions.SectionName));
         services.Configure<KeyVaultOptions>(configuration.GetSection(KeyVaultOptions.SectionName));
         services.Configure<SignalROptions>(configuration.GetSection(SignalROptions.SectionName));
@@ -111,6 +114,9 @@ var host = new HostBuilder()
         services.AddScoped<IMetricsService, MetricsService>();
 
         services.AddSingleton<ILogStreamPublisher, SignalRLogStreamPublisher>();
+        services.AddSingleton<IImportStatusPublisher, ServiceBusImportStatusPublisher>();
+        services.AddSingleton<IMemberAddressImportPayloadResolver, MemberAddressImportPayloadResolver>();
+        services.AddHttpClient("member-address-import");
         services.AddSingleton<IAlertPublisher>(sp =>
         {
             var clientAccessor = sp.GetRequiredService<IServiceBusClientAccessor>();
