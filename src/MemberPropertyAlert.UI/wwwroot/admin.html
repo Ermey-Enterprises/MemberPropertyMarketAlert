@@ -431,9 +431,17 @@
       }
     });
 
-    document.addEventListener('DOMContentLoaded', async () => {
+    const initialize = async () => {
       await fetchTenants();
-    });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        void initialize();
+      });
+    } else {
+      void initialize();
+    }
   </script>
 </body>
 </html>

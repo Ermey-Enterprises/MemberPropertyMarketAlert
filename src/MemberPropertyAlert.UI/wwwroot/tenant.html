@@ -142,10 +142,18 @@
     statusFilter.addEventListener('change', render);
     refreshButton.addEventListener('click', refresh);
 
-    document.addEventListener('DOMContentLoaded', () => {
+    const initialize = () => {
       render();
       refresh();
-    });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        initialize();
+      });
+    } else {
+      initialize();
+    }
   </script>
 </body>
 </html>
