@@ -313,6 +313,12 @@ public sealed class ScanSchedulerFunction
     {
         scheduleDefinition.RecordRun(triggeredAtUtc);
         var persistResult = await _scanScheduleRepository.UpsertAsync(scheduleDefinition, cancellationToken);
+        if (persistResult is null)
+        {
+            _logger.LogError("Failed to persist scan schedule metadata: repository returned no result.");
+            return;
+        }
+
         if (persistResult.IsFailure)
         {
             _logger.LogError("Failed to persist scan schedule metadata: {Error}", persistResult.Error);
