@@ -118,8 +118,10 @@ public static class UiHostBuilder
             return registry.Delete(tenantId) ? Results.NoContent() : Results.NotFound();
         });
 
-        app.MapFallbackToFile("/admin", "admin.html");
-        app.MapFallbackToFile("/tenant", "tenant.html");
+    app.MapFallbackToFile("/admin/{*path:nonfile}", "admin.html");
+    app.MapFallbackToFile("/admin", "admin.html");
+    app.MapFallbackToFile("/tenant/{*path:nonfile}", "tenant.html");
+    app.MapFallbackToFile("/tenant", "tenant.html");
         app.MapFallbackToFile("index.html");
 
         return app;
