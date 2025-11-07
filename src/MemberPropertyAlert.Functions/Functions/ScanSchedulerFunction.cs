@@ -117,18 +117,69 @@ public sealed class ScanSchedulerFunction
 
     private static bool IsDue(CronScheduleDefinition scheduleDefinition, DateTimeOffset triggeredAtUtc)
     {
-        if (scheduleDefinition.LastRunUtc is null)
+        var lastRunUtc = scheduleDefinition.LastRunUtc;
+        if (lastRunUtc is null)
         {
             return true;
         }
 
-        var nextOccurrence = scheduleDefinition.GetNextOccurrence(scheduleDefinition.LastRunUtc.Value);
-        if (nextOccurrence is null)
+        if (triggeredAtUtc <= lastRunUtc.Value)
+        {
+            return false;
+        }
+
+        var (previousOccurrence, nextOccurrence, interval) = GetScheduleWindow(scheduleDefinition, lastRunUtc.Value, triggeredAtUtc);
+
+        if (previousOccurrence is null)
+        {
+            return nextOccurrence is null || triggeredAtUtc >= nextOccurrence.Value;
+        }
+
+        var tolerance = interval.HasValue && interval.Value > TimeSpan.Zero
+            ? TimeSpan.FromTicks(Math.Min(interval.Value.Ticks / 2, TimeSpan.FromMinutes(1).Ticks))
+            : TimeSpan.FromMinutes(1);
+
+        var deltaFromPrevious = previousOccurrence.Value - lastRunUtc.Value;
+        if (deltaFromPrevious <= tolerance)
+        {
+            return false;
+        }
+
+        if (lastRunUtc.Value < previousOccurrence.Value)
         {
             return true;
         }
 
-        return triggeredAtUtc >= nextOccurrence.Value;
+        if (interval.HasValue && interval.Value > TimeSpan.Zero)
+        {
+            var timeSinceLastRun = triggeredAtUtc - lastRunUtc.Value;
+            if (timeSinceLastRun >= interval.Value)
+            {
+                return true;
+            }
+        }
+
+        return nextOccurrence is not null && triggeredAtUtc >= nextOccurrence.Value;
+    }
+
+    private static (DateTimeOffset? Previous, DateTimeOffset? Next, TimeSpan? Interval) GetScheduleWindow(
+        CronScheduleDefinition scheduleDefinition,
+        DateTimeOffset referenceUtc,
+        DateTimeOffset triggeredAtUtc)
+    {
+        var start = referenceUtc < triggeredAtUtc ? referenceUtc : triggeredAtUtc;
+        var probe = scheduleDefinition.GetNextOccurrence(start.AddSeconds(-1));
+        DateTimeOffset? previous = null;
+        DateTimeOffset? next = probe;
+
+        for (var i = 0; i < 512 && next.HasValue && next.Value <= triggeredAtUtc; i++)
+        {
+            previous = next;
+            next = scheduleDefinition.GetNextOccurrence(next.Value);
+        }
+
+        var interval = previous.HasValue && next.HasValue ? next.Value - previous.Value : (TimeSpan?)null;
+        return (previous, next, interval);
     }
 
     private async Task<IReadOnlyList<ScanTarget>> GetScanTargetsAsync(CancellationToken cancellationToken)
