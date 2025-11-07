@@ -188,6 +188,11 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -210,9 +215,41 @@ jobs:
           echo "🧪 Running tests..."
           dotnet test MemberPropertyMarketAlert.sln --no-build --configuration Release --verbosity minimal --logger "console;verbosity=minimal" --filter "FullyQualifiedName!~UiEndToEndTests"
 
+      - name: Install Playwright dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2t64 \
+            libatk-bridge2.0-0 \
+            libatk1.0-0 \
+            libatspi2.0-0 \
+            libcups2 \
+            libdbus-1-3 \
+            libdrm2 \
+            libgbm1 \
+            libgtk-3-0 \
+            libnspr4 \
+            libnss3 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libwayland-client0 \
+            libwayland-server0 \
+            libx11-xcb1 \
+            libxcb-dri3-0 \
+            libxcomposite1 \
+            libxcursor1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxi6 \
+            libxrandr2 \
+            libxrender1 \
+            libxss1 \
+            libxtst6 \
+            libxkbcommon0
+
       - name: Install Playwright browsers
         run: |
-          npx playwright@1.41.2 install --with-deps chromium
+          npx playwright@1.41.2 install chromium
 
       - name: Run UI end-to-end tests
         run: |
