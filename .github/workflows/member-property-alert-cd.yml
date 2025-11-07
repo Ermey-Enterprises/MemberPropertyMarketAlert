@@ -517,9 +517,14 @@ jobs:
           fi
           
           # Create deployment package
-          cd ./publish
-          zip -r ../function-app.zip . > /dev/null 2>&1
-          cd ..
+          if [ ! -d "./publish/functions" ]; then
+            echo "❌ Functions publish output not found at ./publish/functions"
+            exit 1
+          fi
+
+          cd ./publish/functions
+          zip -r ../../function-app.zip . > /dev/null 2>&1
+          cd ../..
           
           # Deploy
           echo "🚀 Deploying Function App..."
@@ -615,9 +620,14 @@ jobs:
           fi
           
           # Create deployment package
-          cd ./publish
-          zip -r ../web-app.zip . > /dev/null 2>&1
-          cd ..
+          if [ ! -d "./publish/ui" ]; then
+            echo "❌ UI publish output not found at ./publish/ui"
+            exit 1
+          fi
+
+          cd ./publish/ui
+          zip -r ../../web-app.zip . > /dev/null 2>&1
+          cd ../..
           
           # Deploy with timeout and better error handling
           echo "🚀 Deploying Web App..."

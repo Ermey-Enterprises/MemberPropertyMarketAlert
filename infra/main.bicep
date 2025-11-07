@@ -600,7 +600,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
     vnetContentShareEnabled: false
     siteConfig: {
       numberOfWorkers: 1
-      linuxFxVersion: 'NODE|18-lts'
+      linuxFxVersion: 'DOTNET|8.0'
       acrUseManagedIdentityCreds: false
       alwaysOn: currentConfig.alwaysOn
       http20Enabled: true
@@ -608,7 +608,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
-      healthCheckPath: '/health'
+      healthCheckPath: '/api/health'
       appSettings: [
         {
           name: 'REACT_APP_API_BASE_URL'
@@ -617,10 +617,6 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = if (deployWebApp) {
         {
           name: 'REACT_APP_ENVIRONMENT'
           value: environment
-        }
-        {
-          name: 'WEBSITE_NODE_DEFAULT_VERSION'
-          value: '18-lts'
         }
         {
           name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
