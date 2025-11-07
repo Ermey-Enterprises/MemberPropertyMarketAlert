@@ -571,18 +571,36 @@ jobs:
             echo "🔍 Infrastructure output not available, discovering existing web app..."
             echo "  Environment: $ENV"
             echo "  Resource Group: $RG_NAME"
-            
-            # Try to find existing web app in the resource group
-            EXISTING_WEB_APPS=$(az webapp list --resource-group "$RG_NAME" --query "[?contains(name, 'web-mpa-${ENV}')].name" -o tsv 2>/dev/null || echo "")
-            
-            if [ -n "$EXISTING_WEB_APPS" ]; then
-              APP_SERVICE_NAME=$(echo "$EXISTING_WEB_APPS" | head -n1)
-              echo "✅ Found existing web app: $APP_SERVICE_NAME"
-            else
-              # Fallback to expected naming convention
-              SUFFIX=$(echo "$RG_NAME" | grep -o '[^-]*$' | head -c 8)
-              APP_SERVICE_NAME="web-mpa-${ENV}-eus2-${SUFFIX}"
-              echo "🎯 Using expected naming convention: $APP_SERVICE_NAME"
+
+            # Try to recover the name from the most recent successful infrastructure deployment
+            LAST_DEPLOYMENT=$(az deployment group list --resource-group "$RG_NAME" --query "[?properties.provisioningState=='Succeeded'] | [-1].name" -o tsv 2>/dev/null || echo "")
+            if [ -n "$LAST_DEPLOYMENT" ]; then
+              echo "🗂️ Using deployment outputs from: $LAST_DEPLOYMENT"
+              APP_SERVICE_NAME=$(az deployment group show --resource-group "$RG_NAME" --name "$LAST_DEPLOYMENT" --query "properties.outputs.webAppDeployment.value.appServiceName" -o tsv 2>/dev/null || echo "")
+              if [ -n "$APP_SERVICE_NAME" ]; then
+                echo "✅ Retrieved Web App name from deployment outputs: $APP_SERVICE_NAME"
+              fi
+            fi
+
+            if [ -z "$APP_SERVICE_NAME" ]; then
+              # Try to find existing web app in the resource group
+              EXISTING_WEB_APPS=$(az webapp list --resource-group "$RG_NAME" --query "[?contains(name, 'web-mpa-${ENV}')].name" -o tsv 2>/dev/null || echo "")
+              if [ -n "$EXISTING_WEB_APPS" ]; then
+                APP_SERVICE_NAME=$(echo "$EXISTING_WEB_APPS" | head -n1)
+                echo "✅ Found existing web app: $APP_SERVICE_NAME"
+              fi
+            fi
+
+            if [ -z "$APP_SERVICE_NAME" ]; then
+              # Final fallback uses unique suffix derived from existing resources
+              FALLBACK_WEB=$(az resource list --resource-group "$RG_NAME" --resource-type "Microsoft.Web/sites" --query "[?contains(name, 'web-mpa-${ENV}')].name" -o tsv 2>/dev/null || echo "")
+              if [ -n "$FALLBACK_WEB" ]; then
+                APP_SERVICE_NAME=$(echo "$FALLBACK_WEB" | head -n1)
+                echo "✅ Found web app via resource scan: $APP_SERVICE_NAME"
+              else
+                echo "❌ Unable to determine Web App name automatically"
+                exit 1
+              fi
             fi
           fi
           
