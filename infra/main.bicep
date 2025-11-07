@@ -708,64 +708,98 @@ resource azureSubscriptionIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01
   }
 }
 
+var roleAssignmentsApiVersion = '2022-04-01'
+var cosmosRoleAssignmentsApiVersion = '2024-05-15'
+var keyVaultSecretsUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+var storageBlobDataContributorRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+var storageFileDataContributorRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb')
+var cosmosDataContributorRoleId = '${cosmosDbAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
+
+var functionAppPrincipalId = deployFunctionApp ? functionApp.identity.principalId : ''
+var webAppPrincipalId = deployWebApp ? webApp.identity.principalId : ''
+
+var functionAppKeyVaultAssignmentExists = deployFunctionApp && !empty(functionAppPrincipalId) ? length(list('${keyVault.id}/providers/Microsoft.Authorization/roleAssignments', roleAssignmentsApiVersion, {
+  filter: 'principalId eq ''${functionAppPrincipalId}'' and roleDefinitionId eq ''${keyVaultSecretsUserRoleId}'''
+}).value) > 0 : false
+
+var webAppKeyVaultAssignmentExists = deployWebApp && !empty(webAppPrincipalId) ? length(list('${keyVault.id}/providers/Microsoft.Authorization/roleAssignments', roleAssignmentsApiVersion, {
+  filter: 'principalId eq ''${webAppPrincipalId}'' and roleDefinitionId eq ''${keyVaultSecretsUserRoleId}'''
+}).value) > 0 : false
+
+var functionAppStorageBlobAssignmentExists = deployFunctionApp && !empty(functionAppPrincipalId) ? length(list('${storageAccount.id}/providers/Microsoft.Authorization/roleAssignments', roleAssignmentsApiVersion, {
+  filter: 'principalId eq ''${functionAppPrincipalId}'' and roleDefinitionId eq ''${storageBlobDataContributorRoleId}'''
+}).value) > 0 : false
+
+var functionAppStorageFileAssignmentExists = deployFunctionApp && !empty(functionAppPrincipalId) ? length(list('${storageAccount.id}/providers/Microsoft.Authorization/roleAssignments', roleAssignmentsApiVersion, {
+  filter: 'principalId eq ''${functionAppPrincipalId}'' and roleDefinitionId eq ''${storageFileDataContributorRoleId}'''
+}).value) > 0 : false
+
+var webAppStorageBlobAssignmentExists = deployWebApp && !empty(webAppPrincipalId) ? length(list('${storageAccount.id}/providers/Microsoft.Authorization/roleAssignments', roleAssignmentsApiVersion, {
+  filter: 'principalId eq ''${webAppPrincipalId}'' and roleDefinitionId eq ''${storageBlobDataContributorRoleId}'''
+}).value) > 0 : false
+
+var functionAppCosmosAssignmentExists = deployFunctionApp && !empty(functionAppPrincipalId) ? length(list('${cosmosDbAccount.id}/sqlRoleAssignments', cosmosRoleAssignmentsApiVersion, {
+  filter: 'principalId eq ''${functionAppPrincipalId}'' and roleDefinitionId eq ''${cosmosDataContributorRoleId}'''
+}).value) > 0 : false
+
 // RBAC Role Assignments for Key Vault access
-resource functionAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+resource functionAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp && !functionAppKeyVaultAssignmentExists) {
   name: guid('kv-role', keyVault.id, functionApp.id, resourceNames.functionApp)
   scope: keyVault
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
+    roleDefinitionId: keyVaultSecretsUserRoleId // Key Vault Secrets User
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
-resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
+resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp && !webAppKeyVaultAssignmentExists) {
   name: guid('kv-role', keyVault.id, webApp.id, resourceNames.webApp)
   scope: keyVault
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
+    roleDefinitionId: keyVaultSecretsUserRoleId // Key Vault Secrets User
     principalId: webApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 // RBAC Role Assignments for Storage Account access with managed identity
-resource functionAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+resource functionAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp && !functionAppStorageBlobAssignmentExists) {
   name: guid('st-blob-role', storageAccount.id, functionApp.id, resourceNames.functionApp)
   scope: storageAccount
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
+    roleDefinitionId: storageBlobDataContributorRoleId // Storage Blob Data Contributor
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
-resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp && !functionAppStorageFileAssignmentExists) {
   name: guid('st-file-role', storageAccount.id, functionApp.id, resourceNames.functionApp)
   scope: storageAccount
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb') // Storage File Data SMB Share Contributor
+    roleDefinitionId: storageFileDataContributorRoleId // Storage File Data SMB Share Contributor
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
-resource webAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
+resource webAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp && !webAppStorageBlobAssignmentExists) {
   name: guid('st-blob-role', storageAccount.id, webApp.id, resourceNames.webApp)
   scope: storageAccount
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
+    roleDefinitionId: storageBlobDataContributorRoleId // Storage Blob Data Contributor
     principalId: webApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 // Cosmos DB Role Assignment with deterministic naming for idempotent redeployments
-resource functionAppCosmosDbAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = if (deployFunctionApp) {
+resource functionAppCosmosDbAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = if (deployFunctionApp && !functionAppCosmosAssignmentExists) {
   parent: cosmosDbAccount
   name: guid('cosmos-role', cosmosDbAccount.id, functionApp.id, resourceNames.functionApp)
   properties: {
-    roleDefinitionId: '${cosmosDbAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
+    roleDefinitionId: cosmosDataContributorRoleId
     principalId: functionApp.identity.principalId
     scope: cosmosDbAccount.id
   }
