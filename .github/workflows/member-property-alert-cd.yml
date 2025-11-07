@@ -208,7 +208,21 @@ jobs:
           dotnet build MemberPropertyMarketAlert.sln --no-restore --configuration Release --verbosity minimal
           
           echo "🧪 Running tests..."
-          dotnet test MemberPropertyMarketAlert.sln --no-build --configuration Release --verbosity minimal --logger "console;verbosity=minimal"
+          dotnet test MemberPropertyMarketAlert.sln --no-build --configuration Release --verbosity minimal --logger "console;verbosity=minimal" --filter "FullyQualifiedName!~UiEndToEndTests"
+
+      - name: Setup Playwright runtime
+        uses: microsoft/playwright-github-action@v1
+        with:
+          browser: chromium
+
+      - name: Run UI end-to-end tests
+        run: |
+          echo "🎭 Running Playwright UI tests..."
+          dotnet test tests/MemberPropertyAlert.EndToEnd.Tests/MemberPropertyAlert.EndToEnd.Tests.csproj \
+            --no-build \
+            --configuration Release \
+            --verbosity minimal \
+            --logger "console;verbosity=minimal"
       
       - name: Publish UI application
         if: needs.analyze-changes.outputs.ui-changed == 'true'

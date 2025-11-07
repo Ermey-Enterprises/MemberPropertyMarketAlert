@@ -71,8 +71,8 @@ public static class UiHostBuilder
 
         var app = builder.Build();
 
-        app.UseDefaultFiles();
-        app.UseStaticFiles();
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
 
         app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
         app.MapGet("/api/tenant/alerts", (TenantAlert[] alerts) => alerts);
@@ -117,6 +117,9 @@ public static class UiHostBuilder
         {
             return registry.Delete(tenantId) ? Results.NoContent() : Results.NotFound();
         });
+
+        app.MapFallbackToFile("/admin", "admin.html");
+        app.MapFallbackToFile("/tenant", "tenant.html");
         app.MapFallbackToFile("index.html");
 
         return app;

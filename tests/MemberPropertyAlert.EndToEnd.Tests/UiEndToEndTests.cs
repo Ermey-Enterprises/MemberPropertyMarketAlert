@@ -78,26 +78,79 @@ public sealed class GenericBrowserFixture : IAsyncLifetime
 {
     private readonly bool _headless;
     private readonly string? _channelOverride;
+    private readonly int? _slowMoDelay;
 
     public GenericBrowserFixture()
     {
-        _headless = !string.Equals(Environment.GetEnvironmentVariable("UI_TEST_HEADFUL"), "1", StringComparison.OrdinalIgnoreCase);
+        var isCi = string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (isCi)
+        {
+            _headless = true;
+        }
+        else
+        {
+            var headlessOverride = ParseBoolean(Environment.GetEnvironmentVariable("UI_TEST_HEADLESS"));
+            var headfulOverride = ParseBoolean(Environment.GetEnvironmentVariable("UI_TEST_HEADFUL"));
+
+            if (headlessOverride.HasValue)
+            {
+                _headless = headlessOverride.Value;
+            }
+            else if (headfulOverride.HasValue)
+            {
+                _headless = !headfulOverride.Value;
+            }
+            else
+            {
+                _headless = false; // Default to headful locally so interactions stay visible.
+            }
+        }
+
         _channelOverride = Environment.GetEnvironmentVariable("UI_TEST_BROWSER_CHANNEL");
+
+        if (!isCi)
+        {
+            var slowMoEnv = Environment.GetEnvironmentVariable("UI_TEST_SLOWMO");
+            if (int.TryParse(slowMoEnv, out var parsed) && parsed > 0)
+            {
+                _slowMoDelay = parsed;
+            }
+            else
+            {
+                _slowMoDelay = 200; // Slow the pointer noticeably for local observation.
+            }
+        }
+
+    var diagnostics = $"Headless={_headless};SlowMo={_slowMoDelay ?? 0};Channel={_channelOverride ?? "chromium"};CI={isCi}";
+    Console.WriteLine($"[ui-tests] {diagnostics}");
+    Console.Out.Flush();
+
+    var diagnosticsFile = Path.Combine(Path.GetTempPath(), "ui-test-launch.txt");
+    File.WriteAllText(diagnosticsFile, diagnostics);
     }
 
     public IPlaywright Playwright { get; private set; } = default!;
     public IBrowser Browser { get; private set; } = default!;
+    public bool IsHeadless => _headless;
 
     public async Task InitializeAsync()
     {
         EnsureBrowsersInstalled();
 
+        Console.WriteLine("[ui-tests] Launching Chromium...");
+        Console.Out.Flush();
+
         Playwright = await Microsoft.Playwright.Playwright.CreateAsync();
         Browser = await Playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
         {
             Headless = _headless,
-            Channel = string.IsNullOrWhiteSpace(_channelOverride) ? null : _channelOverride
+            Channel = string.IsNullOrWhiteSpace(_channelOverride) ? null : _channelOverride,
+            SlowMo = _slowMoDelay
         });
+
+        Console.WriteLine("[ui-tests] Chromium launch complete");
+        Console.Out.Flush();
     }
 
     public async Task DisposeAsync()
@@ -112,10 +165,15 @@ public sealed class GenericBrowserFixture : IAsyncLifetime
 
     public async Task<IBrowserContext> CreateContextAsync()
     {
-        return await Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await Browser.NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = 1280, Height = 720 }
         });
+        if (!_headless)
+        {
+            context.SetDefaultTimeout(60000);
+        }
+        return context;
     }
 
     private static bool _installed;
@@ -130,6 +188,26 @@ public sealed class GenericBrowserFixture : IAsyncLifetime
         Microsoft.Playwright.Program.Main(new[] { "install", "chromium" });
         _installed = true;
     }
+
+    private static bool? ParseBoolean(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.Equals(value, "0", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "false", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return null;
+    }
 }
 
 internal static class UiTestDiagnostics
@@ -139,6 +217,53 @@ internal static class UiTestDiagnostics
         page.Console += (_, message) => Console.WriteLine($"[browser:{message.Type}] {message.Text}");
         page.RequestFailed += (_, request) => Console.WriteLine($"[request-failed] {request.Method} {request.Url} :: {request.Failure}");
         page.PageError += (_, error) => Console.WriteLine($"[page-error] {error}");
+    }
+}
+
+internal static class UiTestExperience
+{
+    private static readonly bool IsCi = string.Equals(
+        Environment.GetEnvironmentVariable("CI"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
+    private static readonly bool _pause = !IsCi && string.Equals(
+        Environment.GetEnvironmentVariable("UI_TEST_PAUSE"),
+        "1",
+        StringComparison.OrdinalIgnoreCase);
+
+    private static readonly int? _observeDelay = !IsCi ? ResolveObserveDelay() : null;
+
+    public static Task ObserveAsync(IPage page)
+    {
+        if (page is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (_pause)
+        {
+            // Launches the Playwright inspector so the user can step through interactions.
+            return page.PauseAsync();
+        }
+
+        if (_observeDelay is int delay)
+        {
+            return page.WaitForTimeoutAsync(delay);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static int? ResolveObserveDelay()
+    {
+        var value = Environment.GetEnvironmentVariable("UI_TEST_OBSERVE_MS");
+        if (int.TryParse(value, out var parsed) && parsed > 0)
+        {
+            return parsed;
+        }
+
+        return 8000; // Default linger so local runs are clearly visible.
     }
 }
 
@@ -158,9 +283,13 @@ public class UiEndToEndTests : IClassFixture<UiServerFixture>, IClassFixture<Gen
     {
         await using var context = await _browser.CreateContextAsync();
         var page = await context.NewPageAsync();
+        if (!_browser.IsHeadless)
+        {
+            await page.BringToFrontAsync();
+        }
         UiTestDiagnostics.Attach(page);
 
-    var tenantResponse = await page.GotoAsync($"{_server.BaseAddress}/tenant.html", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+    var tenantResponse = await page.GotoAsync($"{_server.BaseAddress}/tenant", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
     Assert.True(tenantResponse?.Ok, $"Tenant page load failed: {tenantResponse?.Status} {tenantResponse?.Url}");
 
         await page.WaitForSelectorAsync("[data-testid='alert-card']");
@@ -188,6 +317,8 @@ public class UiEndToEndTests : IClassFixture<UiServerFixture>, IClassFixture<Gen
 
         var healthText = await page.Locator("[data-testid='tenant-health']").InnerTextAsync();
         Assert.Equal("Connected", healthText);
+
+        await UiTestExperience.ObserveAsync(page);
     }
 
     [Fact]
@@ -195,11 +326,15 @@ public class UiEndToEndTests : IClassFixture<UiServerFixture>, IClassFixture<Gen
     {
         await using var context = await _browser.CreateContextAsync();
         var page = await context.NewPageAsync();
+        if (!_browser.IsHeadless)
+        {
+            await page.BringToFrontAsync();
+        }
         UiTestDiagnostics.Attach(page);
         page.Dialog += async (_, dialog) => await dialog.AcceptAsync();
 
-        var adminResponse = await page.GotoAsync($"{_server.BaseAddress}/admin.html", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
-        Assert.True(adminResponse?.Ok, $"Admin page load failed: {adminResponse?.Status} {adminResponse?.Url}");
+    var adminResponse = await page.GotoAsync($"{_server.BaseAddress}/admin", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+    Assert.True(adminResponse?.Ok, $"Admin page load failed: {adminResponse?.Status} {adminResponse?.Url}");
 
         await page.WaitForFunctionAsync("() => window.mpaAdmin && window.mpaAdmin.ready === true");
         await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'tenant-row\\']').length === 3");
@@ -242,5 +377,58 @@ public class UiEndToEndTests : IClassFixture<UiServerFixture>, IClassFixture<Gen
         await page.WaitForFunctionAsync("() => !document.querySelector('[data-testid=\\'tenant-row\\'][data-tenant-id=\\'tailwind-academy\\']')");
 
         await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'tenant-row\\']').length === 3");
+
+        await UiTestExperience.ObserveAsync(page);
+    }
+
+    [Fact]
+    public async Task LandingPage_AllowsNavigationBetweenExperiences()
+    {
+        await using var context = await _browser.CreateContextAsync();
+        var page = await context.NewPageAsync();
+        if (!_browser.IsHeadless)
+        {
+            await page.BringToFrontAsync();
+        }
+        UiTestDiagnostics.Attach(page);
+
+        var homeResponse = await page.GotoAsync($"{_server.BaseAddress}/", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        Assert.True(homeResponse?.Ok, $"Home page load failed: {homeResponse?.Status} {homeResponse?.Url}");
+
+    await page.ClickAsync("[data-testid='admin-entry']");
+    await page.WaitForURLAsync("**/admin", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        await page.WaitForSelectorAsync("text=Administrator Console");
+
+        await page.ClickAsync("[data-testid='back-link']");
+        await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        Assert.Equal("/", new Uri(page.Url).AbsolutePath);
+
+    await page.ClickAsync("[data-testid='tenant-entry']");
+    await page.WaitForURLAsync("**/tenant", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        await page.WaitForSelectorAsync("text=Tenant Alert Dashboard");
+
+        await UiTestExperience.ObserveAsync(page);
+    }
+
+    [Theory]
+    [InlineData("/tenant", "Tenant Alert Dashboard")]
+    [InlineData("/admin", "Administrator Console")]
+    public async Task FriendlyRoutes_RenderStaticExperiences(string path, string expectedHeading)
+    {
+        await using var context = await _browser.CreateContextAsync();
+        var page = await context.NewPageAsync();
+        if (!_browser.IsHeadless)
+        {
+            await page.BringToFrontAsync();
+        }
+        UiTestDiagnostics.Attach(page);
+
+        var response = await page.GotoAsync($"{_server.BaseAddress}{path}", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        Assert.True(response?.Ok, $"Navigation to {path} failed: {response?.Status} {response?.Url}");
+
+        var heading = await page.Locator("main h1").InnerTextAsync();
+        Assert.Contains(expectedHeading, heading, StringComparison.OrdinalIgnoreCase);
+
+        await UiTestExperience.ObserveAsync(page);
     }
 }
