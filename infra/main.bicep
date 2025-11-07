@@ -44,12 +44,6 @@ param azureTenantId string = ''
 @secure()
 param azureSubscriptionId string = ''
 
-@description('Deployment timestamp for unique resource naming (auto-generated)')
-param deploymentTimestamp string = utcNow('yyyyMMddHHmmss')
-
-@description('Deployment name for unique role assignment naming (auto-generated)')
-param deploymentName string = deployment().name
-
 // Azure naming convention variables following Microsoft Cloud Adoption Framework
 // Pattern: <resource-type>-<workload>-<environment>-<region>-<instance>
 var locationAbbreviation = {
@@ -715,9 +709,8 @@ resource azureSubscriptionIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01
 }
 
 // RBAC Role Assignments for Key Vault access
-// Use deployment name + timestamp for maximum uniqueness across all deployments
 resource functionAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
-  name: guid(keyVault.id, resourceNames.functionApp, 'KeyVaultSecretsUser', deploymentName, deploymentTimestamp)
+  name: guid('kv-role', keyVault.id, functionApp.id, resourceNames.functionApp)
   scope: keyVault
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
@@ -727,7 +720,7 @@ resource functionAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022
 }
 
 resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
-  name: guid(keyVault.id, resourceNames.webApp, 'KeyVaultSecretsUser', deploymentName, deploymentTimestamp)
+  name: guid('kv-role', keyVault.id, webApp.id, resourceNames.webApp)
   scope: keyVault
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
@@ -738,7 +731,7 @@ resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-0
 
 // RBAC Role Assignments for Storage Account access with managed identity
 resource functionAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
-  name: guid(storageAccount.id, resourceNames.functionApp, 'StorageBlobDataContributor', deploymentName, deploymentTimestamp)
+  name: guid('st-blob-role', storageAccount.id, functionApp.id, resourceNames.functionApp)
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
@@ -748,7 +741,7 @@ resource functionAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2
 }
 
 resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
-  name: guid(storageAccount.id, resourceNames.functionApp, 'StorageFileDataContributor', deploymentName, deploymentTimestamp)
+  name: guid('st-file-role', storageAccount.id, functionApp.id, resourceNames.functionApp)
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb') // Storage File Data SMB Share Contributor
@@ -758,7 +751,7 @@ resource functionAppStorageFileAccess 'Microsoft.Authorization/roleAssignments@2
 }
 
 resource webAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployWebApp) {
-  name: guid(storageAccount.id, resourceNames.webApp, 'StorageBlobDataContributor', deploymentName, deploymentTimestamp)
+  name: guid('st-blob-role', storageAccount.id, webApp.id, resourceNames.webApp)
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
@@ -767,10 +760,10 @@ resource webAppStorageBlobAccess 'Microsoft.Authorization/roleAssignments@2022-0
   }
 }
 
-// Cosmos DB Role Assignment with deployment name + timestamp for guaranteed uniqueness
+// Cosmos DB Role Assignment with deterministic naming for idempotent redeployments
 resource functionAppCosmosDbAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = if (deployFunctionApp) {
   parent: cosmosDbAccount
-  name: guid(cosmosDbAccount.id, resourceNames.functionApp, 'CosmosDataContributor', deploymentName, deploymentTimestamp)
+  name: guid('cosmos-role', cosmosDbAccount.id, functionApp.id, resourceNames.functionApp)
   properties: {
     roleDefinitionId: '${cosmosDbAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
     principalId: functionApp.identity.principalId
