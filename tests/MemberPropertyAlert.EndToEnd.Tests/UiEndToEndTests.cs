@@ -201,6 +201,7 @@ public class UiEndToEndTests : IClassFixture<UiServerFixture>, IClassFixture<Gen
         var adminResponse = await page.GotoAsync($"{_server.BaseAddress}/admin.html", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         Assert.True(adminResponse?.Ok, $"Admin page load failed: {adminResponse?.Status} {adminResponse?.Url}");
 
+        await page.WaitForFunctionAsync("() => window.mpaAdmin && window.mpaAdmin.ready === true");
         await page.WaitForFunctionAsync("() => document.querySelectorAll('[data-testid=\\'tenant-row\\']').length === 3");
 
         await page.FillAsync("[data-testid='search-input']", "contoso");
@@ -235,7 +236,7 @@ public class UiEndToEndTests : IClassFixture<UiServerFixture>, IClassFixture<Gen
         await page.FillAsync("[data-testid='tenant-members-input']", "48");
         await page.ClickAsync("[data-testid='tenant-save-button']");
 
-        await page.WaitForFunctionAsync("() => document.querySelector('[data-testid=\\'tenant-row\\'][data-tenant-id=\\'tailwind-academy\\'] [data-testid=\\'institution-status\\']').innerText.includes('Active')");
+    await page.WaitForFunctionAsync("() => { const cell = document.querySelector('[data-testid=\\'tenant-row\\'][data-tenant-id=\\'tailwind-academy\\'] [data-testid=\\'institution-status\\']'); return !!cell && !!cell.textContent && cell.textContent.toLowerCase().includes('active'); }");
 
         await page.ClickAsync("[data-testid='tenant-delete-button']");
         await page.WaitForFunctionAsync("() => !document.querySelector('[data-testid=\\'tenant-row\\'][data-tenant-id=\\'tailwind-academy\\']')");

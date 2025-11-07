@@ -136,9 +136,14 @@
     const addressesInput = document.getElementById('tenantAddresses');
     const ssoInput = document.getElementById('tenantSso');
 
-    let tenants = [];
-    let selectedTenantId = null;
-    let mode = 'view';
+  const adminState = window.mpaAdmin = window.mpaAdmin || {};
+  adminState.ready = false;
+  adminState.error = null;
+  adminState.loadedAt = null;
+
+  let tenants = [];
+  let selectedTenantId = null;
+  let mode = 'view';
 
     function sortTenantsInPlace(list) {
       list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'accent' }));
@@ -334,6 +339,7 @@
         tenants = await response.json();
         sortTenantsInPlace(tenants);
         setHealth('Connected');
+        adminState.error = null;
         renderTable();
 
         if (selectedTenantId) {
@@ -346,6 +352,7 @@
         console.error('Unable to load tenants', error);
         setHealth('Offline', true);
         tenants = [];
+        adminState.error = error instanceof Error ? error.message : String(error ?? 'Unknown error');
         renderTable();
       }
     }
@@ -468,7 +475,12 @@
     });
 
     const initialize = async () => {
-      await fetchTenants();
+      try {
+        await fetchTenants();
+      } finally {
+        adminState.ready = true;
+        adminState.loadedAt = new Date().toISOString();
+      }
     };
 
     if (document.readyState === 'loading') {

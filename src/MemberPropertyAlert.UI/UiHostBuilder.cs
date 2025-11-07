@@ -77,7 +77,12 @@ public static class UiHostBuilder
         app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
         app.MapGet("/api/tenant/alerts", (TenantAlert[] alerts) => alerts);
         app.MapGet("/api/admin/institutions", (InstitutionSummary[] summaries) => summaries);
-        app.MapGet("/api/admin/tenants", (TenantRegistry registry) => Results.Ok(registry.GetAll()));
+        app.MapGet("/api/admin/tenants", (TenantRegistry registry) =>
+        {
+            var tenants = registry.GetAll();
+            Console.WriteLine($"[ui-server] returning {tenants.Count} tenants");
+            return Results.Ok(tenants);
+        });
         app.MapGet("/api/admin/tenants/{tenantId}", (TenantRegistry registry, string tenantId) =>
         {
             return registry.TryGet(tenantId, out var tenant)
