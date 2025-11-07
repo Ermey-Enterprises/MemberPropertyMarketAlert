@@ -210,16 +210,9 @@ jobs:
           echo "🧪 Running tests..."
           dotnet test MemberPropertyMarketAlert.sln --no-build --configuration Release --verbosity minimal --logger "console;verbosity=minimal" --filter "FullyQualifiedName!~UiEndToEndTests"
 
-      - name: Install Playwright CLI
-        run: |
-          dotnet tool install --global Microsoft.Playwright.CLI --version 1.41.2
-          echo "PLAYWRIGHT_CLI_PATH=$HOME/.dotnet/tools" >> $GITHUB_ENV
-
       - name: Install Playwright browsers
-        env:
-          PATH: "$HOME/.dotnet/tools:${{ env.PATH }}"
         run: |
-          playwright install --with-deps chromium
+          npx playwright@1.41.2 install --with-deps chromium
 
       - name: Run UI end-to-end tests
         run: |
