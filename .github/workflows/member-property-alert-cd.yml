@@ -465,7 +465,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: functions-app
-          path: ./publish
+          path: ./publish/functions
       
       - name: Deploy Function App
         run: |
@@ -517,14 +517,18 @@ jobs:
           fi
           
           # Create deployment package
-          if [ ! -d "./publish/functions" ]; then
-            echo "❌ Functions publish output not found at ./publish/functions"
+          ARTIFACT_DIR="./publish/functions"
+
+          if [ ! -d "$ARTIFACT_DIR" ]; then
+            echo "❌ Functions publish output not found at $ARTIFACT_DIR"
+            echo "📁 Contents of ./publish:"
+            ls -la ./publish || echo "(publish directory missing)"
             exit 1
           fi
 
-          cd ./publish/functions
+          pushd "$ARTIFACT_DIR" > /dev/null
           zip -r ../../function-app.zip . > /dev/null 2>&1
-          cd ../..
+          popd > /dev/null
           
           # Deploy
           echo "🚀 Deploying Function App..."
