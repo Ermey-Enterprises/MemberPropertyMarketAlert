@@ -322,6 +322,67 @@ jobs:
           
           echo "🔍 Validating Bicep template..."
           az bicep build --file infra/main.bicep
+
+          echo "🧹 Preparing scopes by removing legacy role assignments to avoid duplication..."
+
+          cleanup_role_assignments() {
+            local scope="$1"
+            local role_id="$2"
+
+            if [ -z "$scope" ] || [ -z "$role_id" ]; then
+              return
+            fi
+
+            local assignments
+            assignments=$(az role assignment list --scope "$scope" --role "$role_id" --query '[].id' -o tsv 2>/dev/null || echo "")
+            if [ -z "$assignments" ]; then
+              return
+            fi
+
+            echo "  Removing existing role assignments for role $role_id under scope $scope"
+            while IFS= read -r assignment_id; do
+              if [ -n "$assignment_id" ]; then
+                az role assignment delete --ids "$assignment_id" --only-show-errors || true
+              fi
+            done <<< "$assignments"
+          }
+
+          cleanup_cosmos_role_assignments() {
+            local account_name="$1"
+            local role_id="$2"
+
+            if [ -z "$account_name" ] || [ -z "$role_id" ]; then
+              return
+            fi
+
+            local assignments
+            assignments=$(az cosmosdb sql role assignment list --account-name "$account_name" --resource-group "$RG_NAME" --query "[?roleDefinitionId=='$role_id'].id" -o tsv 2>/dev/null || echo "")
+            if [ -z "$assignments" ]; then
+              return
+            fi
+
+            echo "  Removing existing Cosmos DB role assignments for role $role_id on account $account_name"
+            while IFS= read -r assignment_id; do
+              if [ -n "$assignment_id" ]; then
+                az cosmosdb sql role assignment delete --account-name "$account_name" --resource-group "$RG_NAME" --ids "$assignment_id" --only-show-errors || true
+              fi
+            done <<< "$assignments"
+          }
+
+          if [ "${{ needs.analyze-changes.outputs.deploy-function-app }}" == "true" ] || [ "${{ needs.analyze-changes.outputs.deploy-web-app }}" == "true" ]; then
+            KEY_VAULT_ID=$(az resource list --resource-group "$RG_NAME" --resource-type "Microsoft.KeyVault/vaults" --query "[0].id" -o tsv 2>/dev/null || echo "")
+            STORAGE_ID=$(az resource list --resource-group "$RG_NAME" --resource-type "Microsoft.Storage/storageAccounts" --query "[0].id" -o tsv 2>/dev/null || echo "")
+            COSMOS_ACCOUNT_NAME=$(az cosmosdb list --resource-group "$RG_NAME" --query "[0].name" -o tsv 2>/dev/null || echo "")
+
+            cleanup_role_assignments "$KEY_VAULT_ID" "4633458b-17de-408a-b874-0445c86b69e6"
+            cleanup_role_assignments "$STORAGE_ID" "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+            cleanup_role_assignments "$STORAGE_ID" "0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb"
+
+            if [ -n "$COSMOS_ACCOUNT_NAME" ] && [ -n "$AZURE_SUBSCRIPTION_ID" ]; then
+              COSMOS_ROLE_ID="/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$RG_NAME/providers/Microsoft.DocumentDB/databaseAccounts/$COSMOS_ACCOUNT_NAME/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+              cleanup_cosmos_role_assignments "$COSMOS_ACCOUNT_NAME" "$COSMOS_ROLE_ID"
+            fi
+          fi
           
           # Check if Key Vault exists and has secrets (for Key Vault mode)
           KV_NAME="kv-mpa-${ENV}-eus2-"

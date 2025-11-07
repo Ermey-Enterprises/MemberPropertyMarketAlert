@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.36.177.2456",
-      "templateHash": "17295651867861429318"
+      "version": "0.38.33.27573",
+      "templateHash": "5296195636603085198"
     }
   },
   "parameters": {
@@ -26,13 +26,6 @@
       "defaultValue": "[resourceGroup().location]",
       "metadata": {
         "description": "Azure region for resource deployment"
-      }
-    },
-    "appName": {
-      "type": "string",
-      "defaultValue": "member-property-alert",
-      "metadata": {
-        "description": "Application name prefix for resource naming"
       }
     },
     "deployFunctionApp": {
@@ -96,20 +89,6 @@
       "defaultValue": "",
       "metadata": {
         "description": "Azure Subscription ID for deployment (will be stored in Key Vault)"
-      }
-    },
-    "deploymentTimestamp": {
-      "type": "string",
-      "defaultValue": "[utcNow('yyyyMMddHHmmss')]",
-      "metadata": {
-        "description": "Deployment timestamp for unique resource naming (auto-generated)"
-      }
-    },
-    "deploymentName": {
-      "type": "string",
-      "defaultValue": "[deployment().name]",
-      "metadata": {
-        "description": "Deployment name for unique role assignment naming (auto-generated)"
       }
     }
   },
@@ -659,7 +638,7 @@
         "vnetContentShareEnabled": false,
         "siteConfig": {
           "numberOfWorkers": 1,
-          "linuxFxVersion": "NODE|18-lts",
+          "linuxFxVersion": "DOTNET|8.0",
           "acrUseManagedIdentityCreds": false,
           "alwaysOn": "[variables('currentConfig').alwaysOn]",
           "http20Enabled": true,
@@ -667,7 +646,7 @@
           "ftpsState": "Disabled",
           "minTlsVersion": "1.2",
           "scmMinTlsVersion": "1.2",
-          "healthCheckPath": "/health",
+          "healthCheckPath": "/api/health",
           "appSettings": [
             {
               "name": "REACT_APP_API_BASE_URL",
@@ -676,10 +655,6 @@
             {
               "name": "REACT_APP_ENVIRONMENT",
               "value": "[parameters('environment')]"
-            },
-            {
-              "name": "WEBSITE_NODE_DEFAULT_VERSION",
-              "value": "18-lts"
             },
             {
               "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
@@ -815,7 +790,7 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.KeyVault/vaults/{0}', variables('resourceNames').keyVault)]",
-      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('resourceNames').keyVault), variables('resourceNames').functionApp, 'KeyVaultSecretsUser', parameters('deploymentName'), parameters('deploymentTimestamp'))]",
+      "name": "[guid('kv-role', resourceId('Microsoft.KeyVault/vaults', variables('resourceNames').keyVault), resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), variables('resourceNames').functionApp)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]",
         "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId]",
@@ -831,7 +806,7 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.KeyVault/vaults/{0}', variables('resourceNames').keyVault)]",
-      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('resourceNames').keyVault), variables('resourceNames').webApp, 'KeyVaultSecretsUser', parameters('deploymentName'), parameters('deploymentTimestamp'))]",
+      "name": "[guid('kv-role', resourceId('Microsoft.KeyVault/vaults', variables('resourceNames').keyVault), resourceId('Microsoft.Web/sites', variables('resourceNames').webApp), variables('resourceNames').webApp)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]",
         "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('resourceNames').webApp), '2023-12-01', 'full').identity.principalId]",
@@ -847,7 +822,7 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('resourceNames').storageAccount)]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount), variables('resourceNames').functionApp, 'StorageBlobDataContributor', parameters('deploymentName'), parameters('deploymentTimestamp'))]",
+      "name": "[guid('st-blob-role', resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount), resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), variables('resourceNames').functionApp)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
         "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId]",
@@ -863,7 +838,7 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('resourceNames').storageAccount)]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount), variables('resourceNames').functionApp, 'StorageFileDataContributor', parameters('deploymentName'), parameters('deploymentTimestamp'))]",
+      "name": "[guid('st-file-role', resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount), resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), variables('resourceNames').functionApp)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb')]",
         "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId]",
@@ -879,7 +854,7 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('resourceNames').storageAccount)]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount), variables('resourceNames').webApp, 'StorageBlobDataContributor', parameters('deploymentName'), parameters('deploymentTimestamp'))]",
+      "name": "[guid('st-blob-role', resourceId('Microsoft.Storage/storageAccounts', variables('resourceNames').storageAccount), resourceId('Microsoft.Web/sites', variables('resourceNames').webApp), variables('resourceNames').webApp)]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
         "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('resourceNames').webApp), '2023-12-01', 'full').identity.principalId]",
@@ -894,7 +869,7 @@
       "condition": "[parameters('deployFunctionApp')]",
       "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments",
       "apiVersion": "2024-05-15",
-      "name": "[format('{0}/{1}', variables('resourceNames').cosmosDb, guid(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), variables('resourceNames').functionApp, 'CosmosDataContributor', parameters('deploymentName'), parameters('deploymentTimestamp')))]",
+      "name": "[format('{0}/{1}', variables('resourceNames').cosmosDb, guid('cosmos-role', resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb), resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), variables('resourceNames').functionApp))]",
       "properties": {
         "roleDefinitionId": "[format('{0}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002', resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resourceNames').cosmosDb))]",
         "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('resourceNames').functionApp), '2023-12-01', 'full').identity.principalId]",
