@@ -140,6 +140,34 @@
     let selectedTenantId = null;
     let mode = 'view';
 
+    function sortTenantsInPlace(list) {
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'accent' }));
+    }
+
+    function upsertTenantRecord(record) {
+      if (!record || !record.tenantId) {
+        return;
+      }
+
+      const index = tenants.findIndex(item => item.tenantId === record.tenantId);
+      if (index >= 0) {
+        tenants[index] = record;
+      } else {
+        tenants.push(record);
+      }
+
+      sortTenantsInPlace(tenants);
+    }
+
+    function removeTenantRecord(tenantId) {
+      if (!tenantId) {
+        return;
+      }
+
+      tenants = tenants.filter(item => item.tenantId !== tenantId);
+      sortTenantsInPlace(tenants);
+    }
+
     function normalizeCountText(total) {
       return `${total} tenant${total === 1 ? '' : 's'}`;
     }
@@ -304,6 +332,7 @@
         }
 
         tenants = await response.json();
+        sortTenantsInPlace(tenants);
         setHealth('Connected');
         renderTable();
 
@@ -388,12 +417,14 @@
         if (mode === 'create') {
           const created = await createTenant(payload);
           selectedTenantId = created.tenantId;
-          await fetchTenants();
+          upsertTenantRecord(created);
           selectTenant(selectedTenantId);
+          await fetchTenants();
         } else if (mode === 'edit' && selectedTenantId) {
-          await updateTenant(selectedTenantId, payload);
+          const updated = await updateTenant(selectedTenantId, payload);
+          upsertTenantRecord(updated);
+          selectTenant(updated.tenantId);
           await fetchTenants();
-          selectTenant(selectedTenantId);
         }
       } catch (error) {
         console.error(error);
@@ -417,9 +448,14 @@
       deleteButton.disabled = true;
 
       try {
+        const tenantIdToRemove = selectedTenantId;
+
         await deleteTenant(selectedTenantId);
         selectedTenantId = null;
+        mode = 'view';
+        removeTenantRecord(tenantIdToRemove);
         hideDetailPanel();
+        renderTable();
         await fetchTenants();
       } catch (error) {
         console.error(error);
